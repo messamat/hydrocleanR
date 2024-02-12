@@ -6,6 +6,7 @@ library(data.table)
 #library(plyr)
 library(ggplot2)
 library(qs)
+#library(reactlog) #for debugging: https://shiny.posit.co/r/getstarted/build-an-app/reactivity-essentials/using-reactives.html
 library(tools)
 
 #source("helpers.R")
@@ -35,16 +36,6 @@ server <- function(input, output, session) {
       }
     }
   })
-  
-  #Create 
-  observe({
-    if (input$checkbox_date) {
-      dt$data[, (eval(input$xvar)) := as.Date(get(input$xvar))]
-    } else {
-      dt$data <- myData()
-    }
-  })
-  
   
   #An observer is like a reactive expression in that it can read reactive values and call reactive expressions, 
   # and will automatically re-execute when those dependencies change. 
@@ -85,13 +76,24 @@ server <- function(input, output, session) {
       choices= colnames(myData()))
   })
   
-  #Create table of sites
+  #Create data
+  observe({
+    if (is.null(dt$data)) {
+      dt$data <- myData()
+    }
+    if (input$checkbox_date & (input$xvar %in% colnames(dt$data))) {
+      dt$data[, (eval(input$xvar)) := as.Date(get(input$xvar))]
+    }
+  })
+
+    #Create table of sites
   table <- reactive({
     sites <- unique(dt$data[, eval(input$groupvar), with=F])
     sites_dt <- data.table(Groups = sites, Marked = rep(NA, length(sites)))
     colnames(sites_dt)[1] <- eval(input$groupvar)
     sites_dt
   })
+  
   #Pass date object to UI
   dd=reactiveValues(select=1)
   
@@ -102,6 +104,7 @@ server <- function(input, output, session) {
   
   #Get data to plot
   site_dat <- reactive({
+    req(dt$data)
     dd$select <- input$grouptable_rows_selected
     site <- table()[dd$select, eval(input$groupvar), with=F][[1]]
     sub <- dt$data[get(input$groupvar) == site,] #subset(dt$data, get(input$groupvar) == site) #
@@ -110,8 +113,8 @@ server <- function(input, output, session) {
   
   #output$sitedat <- DT::renderDataTable(site_dat())
   
-  output$siteplot <- renderPlot({
-    #ggplot(dat, aes_string(x = "SampleDateTime_format_dayonly", y = "dailymean")) + geom_point()
+  main_plot <- reactive({
+    req(site_dat())
     pc <- ggplot(site_dat(), 
                  aes_string(x = input$xvar, y = input$yvar, 
                             colour = input$colorvar)) +
@@ -127,51 +130,71 @@ server <- function(input, output, session) {
       if (class(site_dat()[[eval(input$colorvar)]]) %in% c('integer', 'numeric')) {
         pc <- pc + scale_color_distiller(palette='Spectral')
       }
-      
     } 
-    
     pc
   })
   
-  output$brushrange <- renderText({
-    if(!is.null(input$plot_brush$xmin)) {
-      range <- data.table(
-        xmin = as.Date(input$plot_brush$xmin, origin="1970-01-01"),
-        xmax = as.Date(input$plot_brush$xmax, origin="1970-01-01"),
-        ymin = input$plot_brush$ymin,
-        ymax = input$plot_brush$ymax
+  output$mainplot <- renderPlot({
+    main_plot()
+  })
+  
+  # Modify zoomedplot to use the stored plot object
+  output$zoomedplot <- renderPlot({
+    req(input$mainplot_brush)
+    brush_dat <- input$mainplot_brush
+    if (input$checkbox_date) {
+      brush_dat$xmin <- as.Date(brush_dat$xmin, origin="1970-01-01")
+      brush_dat$xmax <- as.Date(brush_dat$xmax, origin="1970-01-01")
+    }
+    main_plot() + coord_cartesian(xlim=c(brush_dat$xmin, brush_dat$xmax))
+  })
+  
+  output$brushrange <-  DT::renderDataTable({
+    brushedPoints(site_dat(), input$zoomedplot_brush)
+  })
+  
+  
+  output$brushrangetxt <- renderText({
+    req(input$zoomedplot_brush)
+    if(!is.null(input$zoomedplot_brush$xmin)) {
+      range_dt <- data.table(
+        xmin = input$zoomedplot_brush$xmin,
+        xmax = input$zoomedplot_brush$xmax,
+        ymin = input$zoomedplot_brush$ymin,
+        ymax = input$zoomedplot_brush$ymax
       )
       if (input$checkbox_date) {
-        paste0("xmin=", range$xmin, "  xmax=", range$xmax,
-               "\nymin=", range$ymin, "  ymax=", range$ymax)
-      }else {
-        paste0("xmin=", range$xmin, "\nxmax=", range$xmax,
-               "\nymin=", range$ymin, "  ymax=", range$ymax)
+        range_dt$xmin <- as.Date(range_dt$xmin, origin="1970-01-01")
+        range_dt$xmax <- as.Date(range_dt$xmax, origin="1970-01-01")
+        
       }
+      paste0("xmin=", range_dt$xmin, "\nxmax=", range_dt$xmax,
+             "\nymin=", range_dt$ymin, "  ymax=", range_dt$ymax)
     } else {
       print("Selected range")
     }
   })
   
   observeEvent(input$del, {
-    brush_dat <- input$plot_brush
-    if (input$checkbox_date) {
-      brush_dat$xmin <- as.Date(brush_dat$xmin, origin="1970-01-01")
-      brush_dat$xmax <- as.Date(brush_dat$xmax, origin="1970-01-01")
-    }
+    # brush_datzoom <- input$zoomedplot_brush
+    # if (input$checkbox_date) {
+    #   brush_datzoom$xmin <- as.Date(brush_datzoom$xmin, origin = "1970-01-01")
+    #   brush_datzoom$xmax <- as.Date(brush_datzoom$xmax, origin = "1970-01-01")
+    # }
+    # 
+    # dd$select <- input$grouptable_rows_selected
+    # site <- table()[dd$select, get(input$groupvar)]
+    # 
+    # dt$data <- dt$data[
+    #   !(get(input$groupvar) == site &
+    #       ((get(input$xvar) > brush_datzoom$xmin
+    #         & get(input$xvar) < brush_datzoom$xmax) &
+    #          (get(input$yvar) > brush_datzoom$ymin
+    #           & get(input$yvar) < brush_datzoom$ymax))),]
     
-    dd$select <- input$grouptable_rows_selected
-    site <- table()[dd$select, get(input$groupvar)]
-    #temp <- subset(dt$data, get(input$yvar) < 2)
-    #dt$data <- temp
-    
-    dt$data <- dt$data[
-      !(get(input$groupvar) == site 
-        & ((get(input$xvar) > brush_dat$xmin 
-            & get(input$xvar) < brush_dat$xmax)
-           & (get(input$yvar) > brush_dat$ymin 
-              & get(input$yvar) < brush_dat$ymax))),]
-    
+    dt$data <- brushedPoints(site_dat(), 
+                             input$zoomedplot_brush,
+                             allRows=T)[selected_ == FALSE,]
   })
   
   # observeEvent(input$res, {
@@ -216,7 +239,7 @@ ui <- fluidPage(
                        ""),
            checkboxInput("checkbox_date",
                          label = "Convert X variable to dates?", 
-                         value = F),
+                         value = T),
            # print("Warning: once checked, unchecking will cancel
            #       temporary changes to data"),
            
@@ -236,10 +259,19 @@ ui <- fluidPage(
                        "")
            
     ),
-    column(10,
-           plotOutput('siteplot',
-                      brush = brushOpts(id = "plot_brush", 
-                                        clip = TRUE, resetOnNew = TRUE))
+    column(5,
+           plotOutput('mainplot',
+                      brush = brushOpts(id = "mainplot_brush", 
+                                        clip = TRUE, 
+                                        resetOnNew = TRUE,
+                                        direction = "x"))
+           
+    ),
+    column(5,
+           plotOutput('zoomedplot',
+                      brush = brushOpts(id = "zoomedplot_brush", 
+                                        clip = TRUE, 
+                                        resetOnNew = TRUE))
            
     )
   ),
@@ -248,16 +280,15 @@ ui <- fluidPage(
     column(4,
            DT::dataTableOutput('grouptable')),
     column(8,
-           verbatimTextOutput("brushrange"),
            fluidRow(
-             column(4,
+             column(3,
                     actionButton('del', "Delete")),
-             column(4,
-                    actionButton('res', 'Group reset'))),
-           
-           fluidRow(
-             column(8,
-                    downloadButton('save', 'Save')))
+             # column(3,
+             #        actionButton('res', 'Group reset')),
+             column(3,
+                    downloadButton('save', 'Save'))),
+           verbatimTextOutput("brushrangetxt"),
+           DT::dataTableOutput('brushrange')
     )
   )
 )
