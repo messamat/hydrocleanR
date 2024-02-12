@@ -149,51 +149,51 @@ server <- function(input, output, session) {
     main_plot() + coord_cartesian(xlim=c(brush_dat$xmin, brush_dat$xmax))
   })
   
-  output$brushrange <-  DT::renderDataTable({
-    brushedPoints(site_dat(), input$zoomedplot_brush)
-  })
-  
-  
-  output$brushrangetxt <- renderText({
+  #Grab and transform zoomed plot selection
+  zoomedplots_brush_trans <- reactive({
     req(input$zoomedplot_brush)
-    if(!is.null(input$zoomedplot_brush$xmin)) {
-      range_dt <- data.table(
-        xmin = input$zoomedplot_brush$xmin,
-        xmax = input$zoomedplot_brush$xmax,
-        ymin = input$zoomedplot_brush$ymin,
-        ymax = input$zoomedplot_brush$ymax
-      )
-      if (input$checkbox_date) {
-        range_dt$xmin <- as.Date(range_dt$xmin, origin="1970-01-01")
-        range_dt$xmax <- as.Date(range_dt$xmax, origin="1970-01-01")
-        
-      }
-      paste0("xmin=", range_dt$xmin, "\nxmax=", range_dt$xmax,
-             "\nymin=", range_dt$ymin, "  ymax=", range_dt$ymax)
-    } else {
-      print("Selected range")
+    zoomed_sel <- input$zoomedplot_brush
+    if (input$checkbox_scale == 2) {
+      zoomed_sel$ymin <- zoomed_sel$ymin^2
+      zoomed_sel$ymax <- zoomed_sel$ymax^2
+    } else if (input$checkbox_scale == 3) {
+      zoomed_sel$ymin <- 10^zoomed_sel$ymin
+      zoomed_sel$ymax <- 10^zoomed_sel$ymax
     }
+    zoomed_sel
   })
+  
+  output$brushrange <-  DT::renderDataTable({
+    req(zoomedplots_brush_trans)
+    brushedPoints(site_dat(), zoomedplots_brush_trans())
+  })
+  
+  
+  # output$brushrangetxt <- renderText({
+  #   req(input$zoomedplot_brush)
+  #   if(!is.null(input$zoomedplot_brush$xmin)) {
+  #     range_dt <- data.table(
+  #       xmin = input$zoomedplot_brush$xmin,
+  #       xmax = input$zoomedplot_brush$xmax,
+  #       ymin = input$zoomedplot_brush$ymin,
+  #       ymax = input$zoomedplot_brush$ymax
+  #     )
+  #     if (input$checkbox_date) {
+  #       range_dt$xmin <- as.Date(range_dt$xmin, origin="1970-01-01")
+  #       range_dt$xmax <- as.Date(range_dt$xmax, origin="1970-01-01")
+  # 
+  #     }
+  #     paste0("xmin=", range_dt$xmin, "\nxmax=", range_dt$xmax,
+  #            "\nymin=", range_dt$ymin, "  ymax=", range_dt$ymax)
+  #   } else {
+  #     print("Selected range")
+  #   }
+  # })
   
   observeEvent(input$del, {
-    # brush_datzoom <- input$zoomedplot_brush
-    # if (input$checkbox_date) {
-    #   brush_datzoom$xmin <- as.Date(brush_datzoom$xmin, origin = "1970-01-01")
-    #   brush_datzoom$xmax <- as.Date(brush_datzoom$xmax, origin = "1970-01-01")
-    # }
-    # 
-    # dd$select <- input$grouptable_rows_selected
-    # site <- table()[dd$select, get(input$groupvar)]
-    # 
-    # dt$data <- dt$data[
-    #   !(get(input$groupvar) == site &
-    #       ((get(input$xvar) > brush_datzoom$xmin
-    #         & get(input$xvar) < brush_datzoom$xmax) &
-    #          (get(input$yvar) > brush_datzoom$ymin
-    #           & get(input$yvar) < brush_datzoom$ymax))),]
-    
+    req(zoomedplots_brush_trans)
     dt$data <- brushedPoints(site_dat(), 
-                             input$zoomedplot_brush,
+                             zoomedplots_brush_trans(),
                              allRows=T)[selected_ == FALSE,]
   })
   
