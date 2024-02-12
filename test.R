@@ -78,6 +78,11 @@ server <- function(input, output, session) {
       choices= colnames(myData()),
       selected = colnames(myData())[[min(c(ncol(myData()), 4))]]
       )
+    
+    updateSelectInput(
+      session,
+      inputId = "colorvar",
+      choices= colnames(myData()))
   })
   
   #Create table of sites
@@ -103,15 +108,23 @@ server <- function(input, output, session) {
   output$siteplot <- renderPlot({
     #ggplot(dat, aes_string(x = "SampleDateTime_format_dayonly", y = "dailymean")) + geom_point()
     pc <- ggplot(site_dat(), 
-                 aes_string(x = input$xvar, y = input$yvar)) +
+                 aes_string(x = input$xvar, y = input$yvar, 
+                            colour = input$colorvar)) +
       geom_point()
-    
+
     if (input$checkbox_scale == 2) {
       pc <- pc + scale_y_sqrt()
     } else if (input$checkbox_scale == 3) {
       pc <- pc + scale_y_continuous(trans=scales::pseudo_log_trans(base = 10))
     }
+
+    if (is.character(input$colorvar)) {
+      if (class(site_dat()[[eval(input$colorvar)]]) %in% c('integer', 'numeric')) {
+        pc <- pc + scale_color_distiller(palette='Spectral')
+      }
     
+    } 
+
     pc
   })
   
@@ -199,8 +212,8 @@ ui <- fluidPage(
            checkboxInput("checkbox_date",
                          label = "Convert X variable to dates?", 
                          value = F),
-           print("Warning: once checked, unchecking will cancel
-                 temporary changes to data"),
+           # print("Warning: once checked, unchecking will cancel
+           #       temporary changes to data"),
            
            selectInput("yvar", 
                        label = h5("Y variable"),
@@ -211,7 +224,11 @@ ui <- fluidPage(
                                        "Square root" = 2,
                                        "Log" = 3),
                         selected = 1),
-           print("Warning: once chosen, changing will cancel temporary changes to data"),
+           #print("Warning: once chosen, changing will cancel temporary changes to data"),
+           
+           selectInput("colorvar",
+                       label = h5("Color-coding variable"),
+                       "")
            
     ),
     column(10,

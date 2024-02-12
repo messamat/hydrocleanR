@@ -3,9 +3,10 @@ library(shiny)
 library(DT)
 library(data.table)
 #library(quantmod)
+#library(plyr)
 library(ggplot2)
 library(qs)
-#Need to use renv::isolate() to make sure that packages are passed
+library(tools)
 
 #source("helpers.R")
 options(shiny.maxRequestSize=2000*1024^2)
@@ -27,11 +28,10 @@ server <- function(input, output, session) {
       return(NULL)
     } else {
       #Don't forget () after a variable set as reactive
-      if (tools::file_ext(inFile()$datapath)=='.csv') {
+      if (tools::file_ext(inFile()$datapath)=='csv') {
         fread(inFile()$datapath)
-      } else if (tools::file_ext(inFile()$datapath)=='.qs') {
-        qread(inFile()$datapath) %>%
-          setDT
+      } else if (tools::file_ext(inFile()$datapath)=='qs') {
+        as.data.table(qread(inFile()$datapath))
       }
     }
   })
@@ -39,12 +39,13 @@ server <- function(input, output, session) {
   #Create 
   observe({
     if (input$checkbox_date) {
-    dt$data[, (eval(input$xvar)) := as.Date(get(input$xvar))]
+      dt$data[, (eval(input$xvar)) := as.Date(get(input$xvar))]
     } else {
       dt$data <- myData()
     }
   })
-
+  
+  
   #An observer is like a reactive expression in that it can read reactive values and call reactive expressions, 
   # and will automatically re-execute when those dependencies change. 
   #Unlike reactive expressions, it doesn't yield a result and can't be used as an input to other reactive expressions.
@@ -53,41 +54,53 @@ server <- function(input, output, session) {
   observe({
     if (identical(myData(), '') || identical(myData(), data.table()))
       return(NULL)
-
-#   The input updater functions send a message to the client, telling it to change the settings of an input object. 
-#   The messages are collected and sent after all the observers (including outputs) have finished running.
+    
+    #   The input updater functions send a message to the client, telling it to change the settings of an input object. 
+    #   The messages are collected and sent after all the observers (including outputs) have finished running.
     updateSelectInput(
       session,
       inputId = "groupvar",
-      choices = colnames(myData()))
+      choices = colnames(myData()),
+      selected = colnames(myData())[[1]]
+    )
     
     #Create selection of variables based on input table
     updateSelectInput(
       session,
       inputId = "xvar",
-      choices= colnames(myData()))
+      choices= colnames(myData()),
+      selected = colnames(myData())[[min(c(ncol(myData()), 2))]]
+    )
     
     updateSelectInput(
       session,
       inputId = "yvar",
+      choices= colnames(myData()),
+      selected = colnames(myData())[[min(c(ncol(myData()), 4))]]
+    )
+    
+    updateSelectInput(
+      session,
+      inputId = "colorvar",
       choices= colnames(myData()))
   })
   
   #Create table of sites
   table <- reactive({
-      sites <- unique(dt$data[, get(input$groupvar)])
-      sites_dt <- data.table(Groups = sites, Marked = rep(NA, length(sites)))
-      colnames(sites_dt)[1] <- eval(input$groupvar)
-      sites_dt
-    })
+    sites <- unique(dt$data[, eval(input$groupvar), with=F])
+    sites_dt <- data.table(Groups = sites, Marked = rep(NA, length(sites)))
+    colnames(sites_dt)[1] <- eval(input$groupvar)
+    sites_dt
+  })
   #Pass date object to UI
   output$grouptable <- DT::renderDataTable(table(),selection = 'single')
-
+  
   #Get data to plot
   site_dat <- reactive({
     grp <- input$grouptable_rows_selected
-    site <- table()[grp, get(input$groupvar)]
-    sub <- dt$data[get(input$groupvar) == site,]
+    site <- table()[grp, eval(input$groupvar), with=F][[1]]
+    sub <- dt$data[get(input$groupvar) == site,] #subset(dt$data, get(input$groupvar) == site) #
+    sub
   })
   
   #output$sitedat <- DT::renderDataTable(site_dat())
@@ -95,7 +108,8 @@ server <- function(input, output, session) {
   output$siteplot <- renderPlot({
     #ggplot(dat, aes_string(x = "SampleDateTime_format_dayonly", y = "dailymean")) + geom_point()
     pc <- ggplot(site_dat(), 
-                 aes_string(x = input$xvar, y = input$yvar)) +
+                 aes_string(x = input$xvar, y = input$yvar, 
+                            colour = input$colorvar)) +
       geom_point()
     
     if (input$checkbox_scale == 2) {
@@ -104,18 +118,26 @@ server <- function(input, output, session) {
       pc <- pc + scale_y_continuous(trans=scales::pseudo_log_trans(base = 10))
     }
     
+    if (is.character(input$colorvar)) {
+      if (class(site_dat()[[eval(input$colorvar)]]) %in% c('integer', 'numeric')) {
+        pc <- pc + scale_color_distiller(palette='Spectral')
+      }
+      
+    } 
+    
     pc
   })
   
   output$brushrange <- renderText({
     if(!is.null(input$plot_brush$xmin)) {
-      range <- NULL
-      range$xmin <- input$plot_brush$xmin
-      range$xmax <- input$plot_brush$xmax
-      range$ymin <- input$plot_brush$ymin
-      range$ymax <- input$plot_brush$ymax
+      range <- data.table(
+        xmin = as.Date(input$plot_brush$xmin, origin="1970-01-01"),
+        xmax = as.Date(input$plot_brush$xmax, origin="1970-01-01"),
+        ymin = input$plot_brush$ymin,
+        ymax = input$plot_brush$ymax
+      )
       if (input$checkbox_date) {
-        paste0("xmin=", as.Date(range$xmin), "  xmax=", as.Date(range$xmax), 
+        paste0("xmin=", range$xmin, "  xmax=", range$xmax,
                "\nymin=", range$ymin, "  ymax=", range$ymax)
       }else {
         paste0("xmin=", range$xmin, "\nxmax=", range$xmax,
@@ -128,31 +150,28 @@ server <- function(input, output, session) {
   
   observeEvent(input$del, {
     brush_dat <- input$plot_brush
+    if (input$checkbox_date) {
+      brush_dat$xmin <- as.Date(brush_dat$xmin, origin="1970-01-01")
+      brush_dat$xmax <- as.Date(brush_dat$xmax, origin="1970-01-01")
+    }
+    
     grp <- input$grouptable_rows_selected
     site <- table()[grp, get(input$groupvar)]
     #temp <- subset(dt$data, get(input$yvar) < 2)
     #dt$data <- temp
-
-    if (input$checkbox_date) {
-      dt$data <- dt$data[ 
-        !(get(input$groupvar) == site 
-          & ((get(input$xvar) > as.Date(brush_dat$xmin) 
-              & get(input$xvar) < as.Date(brush_dat$xmax))
-             & (get(input$yvar) > as.Date(brush_dat$ymin) 
-                & get(input$yvar) < as.Date(brush_dat$ymax)))),] 
-      }else {
-        dt$data <- dt$data[
-          !(get(input$groupvar) == site 
-            & ((get(input$xvar) > brush_dat$xmin 
-                & get(input$xvar) < brush_dat$xmax)
-               & (get(input$yvar) > brush_dat$ymin 
-                  & get(input$yvar) < brush_dat$ymax))),]
-    }
+    
+    dt$data <- dt$data[
+      !(get(input$groupvar) == site 
+        & ((get(input$xvar) > brush_dat$xmin 
+            & get(input$xvar) < brush_dat$xmax)
+           & (get(input$yvar) > brush_dat$ymin 
+              & get(input$yvar) < brush_dat$ymax))),]
+    
   })
   
   observeEvent(input$res, {
     grp <- input$grouptable_rows_selected
-    site <- table()[grp, get(input$groupvar)]
+    site <- table()[grp, eval(input$groupvar), with=F]
     dt$data <- dt$data[!(get(input$groupvar) == site),]
     dt$data <- rbind(dt$data,
                      myData()[get(input$groupvar) == site,]
@@ -162,9 +181,9 @@ server <- function(input, output, session) {
   output$save <- downloadHandler(
     filename <- reactive({ 
       paste(file_path_sans_ext(inFile()$name), '_edit.csv', sep = '') 
-      }),
+    }),
     content = function(file) {
-      write.csv(dt$data, file, row.names = F)
+      fwrite(dt$data, file, row.names = F)
     }
   )
 }
@@ -190,12 +209,12 @@ ui <- fluidPage(
            selectInput("xvar", 
                        label = h5("X variable"),
                        ""),
-           
            checkboxInput("checkbox_date",
-                         label = "Convert X variable to dates?", value = F),
-           print("Warning: once checked, unchecking will cancel temporary changes to data"),
+                         label = "Convert X variable to dates?", 
+                         value = F),
+           # print("Warning: once checked, unchecking will cancel
+           #       temporary changes to data"),
            
-
            selectInput("yvar", 
                        label = h5("Y variable"),
                        ""),
@@ -205,16 +224,17 @@ ui <- fluidPage(
                                        "Square root" = 2,
                                        "Log" = 3),
                         selected = 1),
-           print("Warning: once checked, unchecking will cancel temporary changes to data"),
+           #print("Warning: once chosen, changing will cancel temporary changes to data"),
            
            selectInput("colorvar",
                        label = h5("Color-coding variable"),
                        "")
+           
     ),
     column(10,
-           h2("Plot"),
            plotOutput('siteplot',
-                      brush = brushOpts(id = "plot_brush", clip = TRUE, resetOnNew = TRUE))
+                      brush = brushOpts(id = "plot_brush", 
+                                        clip = TRUE, resetOnNew = TRUE))
            
     )
   ),
