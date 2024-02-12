@@ -93,12 +93,17 @@ server <- function(input, output, session) {
     sites_dt
   })
   #Pass date object to UI
-  output$grouptable <- DT::renderDataTable(table(),selection = 'single')
+  dd=reactiveValues(select=1)
+  
+  output$grouptable <- DT::renderDataTable(
+    table(), 
+    selection = list(mode='single', selected = dd$select)
+  )
   
   #Get data to plot
   site_dat <- reactive({
-    grp <- input$grouptable_rows_selected
-    site <- table()[grp, eval(input$groupvar), with=F][[1]]
+    dd$select <- input$grouptable_rows_selected
+    site <- table()[dd$select, eval(input$groupvar), with=F][[1]]
     sub <- dt$data[get(input$groupvar) == site,] #subset(dt$data, get(input$groupvar) == site) #
     sub
   })
@@ -155,8 +160,8 @@ server <- function(input, output, session) {
       brush_dat$xmax <- as.Date(brush_dat$xmax, origin="1970-01-01")
     }
     
-    grp <- input$grouptable_rows_selected
-    site <- table()[grp, get(input$groupvar)]
+    dd$select <- input$grouptable_rows_selected
+    site <- table()[dd$select, get(input$groupvar)]
     #temp <- subset(dt$data, get(input$yvar) < 2)
     #dt$data <- temp
     
@@ -169,14 +174,14 @@ server <- function(input, output, session) {
     
   })
   
-  observeEvent(input$res, {
-    grp <- input$grouptable_rows_selected
-    site <- table()[grp, eval(input$groupvar), with=F]
-    dt$data <- dt$data[!(get(input$groupvar) == site),]
-    dt$data <- rbind(dt$data,
-                     myData()[get(input$groupvar) == site,]
-    )
-  })
+  # observeEvent(input$res, {
+  #   dd$select <- input$grouptable_rows_selected
+  #   site <- table()[dd$select, eval(input$groupvar), with=F]
+  #   dt$data <- dt$data[!(get(input$groupvar) == site),]
+  #   dt$data <- rbind(dt$data,
+  #                    myData()[get(input$groupvar) == site,]
+  #   )
+  # })
   
   output$save <- downloadHandler(
     filename <- reactive({ 
