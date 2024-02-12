@@ -60,18 +60,24 @@ server <- function(input, output, session) {
     updateSelectInput(
       session,
       inputId = "groupvar",
-      choices = colnames(myData()))
+      choices = colnames(myData()),
+      selected = colnames(myData())[[1]]
+      )
     
     #Create selection of variables based on input table
     updateSelectInput(
       session,
       inputId = "xvar",
-      choices= colnames(myData()))
+      choices= colnames(myData()),
+      selected = colnames(myData())[[min(c(ncol(myData()), 2))]]
+      )
     
     updateSelectInput(
       session,
       inputId = "yvar",
-      choices= colnames(myData()))
+      choices= colnames(myData()),
+      selected = colnames(myData())[[min(c(ncol(myData()), 4))]]
+      )
   })
   
   #Create table of sites
@@ -92,11 +98,6 @@ server <- function(input, output, session) {
     sub
   })
   
-  # Determine the origin date (e.g., minimum date in your dataset)
-  origin_date <- reactive({
-    site_dat()[, min(get(input$xvar))]
-  })
-  
   #output$sitedat <- DT::renderDataTable(site_dat())
   
   output$siteplot <- renderPlot({
@@ -105,9 +106,11 @@ server <- function(input, output, session) {
                  aes_string(x = input$xvar, y = input$yvar)) +
       geom_point()
     
-    if (input$checkbox_date) {
-      pc <- pc + scale_x_date()
-    } 
+    if (input$checkbox_scale == 2) {
+      pc <- pc + scale_y_sqrt()
+    } else if (input$checkbox_scale == 3) {
+      pc <- pc + scale_y_continuous(trans=scales::pseudo_log_trans(base = 10))
+    }
     
     pc
   })
@@ -167,7 +170,7 @@ server <- function(input, output, session) {
       paste(file_path_sans_ext(inFile()$name), '_edit.csv', sep = '') 
     }),
     content = function(file) {
-      write.csv(dt$data, file, row.names = F)
+      fwrite(dt$data, file, row.names = F)
     }
   )
 }
@@ -194,16 +197,24 @@ ui <- fluidPage(
                        label = h5("X variable"),
                        ""),
            checkboxInput("checkbox_date",
-                         label = "Convert X variable to dates?", value = F),
+                         label = "Convert X variable to dates?", 
+                         value = F),
            print("Warning: once checked, unchecking will cancel
                  temporary changes to data"),
            
            selectInput("yvar", 
                        label = h5("Y variable"),
-                       "")
+                       ""),
+           radioButtons("checkbox_scale",
+                        label = "Scale Y variable?", 
+                        choices = list("No scaling" = 1,
+                                       "Square root" = 2,
+                                       "Log" = 3),
+                        selected = 1),
+           print("Warning: once chosen, changing will cancel temporary changes to data"),
+           
     ),
     column(10,
-           h2("Plot"),
            plotOutput('siteplot',
                       brush = brushOpts(id = "plot_brush", 
                                         clip = TRUE, resetOnNew = TRUE))
