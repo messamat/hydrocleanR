@@ -115,21 +115,28 @@ server <- function(input, output, session) {
   main_plot <- reactive({
     req(site_dat())
     pc <- ggplot(site_dat(), 
-                 aes_string(x = input$xvar, y = (input$yvar), 
-                            colour = input$colorvar, group=input$groupvar)) 
+                 aes_string(x = input$xvar,
+                            y = (input$yvar),
+                            group=input$groupvar)) 
     
     if (input$checkbox_scale == 2) {
-      pc <- pc + geom_line(alpha=1/2) + geom_point() + scale_y_sqrt()
+      pc <- pc + 
+        geom_line(alpha=1/2) + 
+        geom_point(aes_string(colour = input$colorvar)) + 
+        scale_y_sqrt()
+      
     } else if (input$checkbox_scale == 3) {
       scalar <- 0.01
       pc <- pc + 
         geom_line(aes(y =!!rlang::sym(input$yvar) + scalar), alpha=1/2) +
-        geom_point(aes(y =!!rlang::sym(input$yvar) + scalar)) +
+        geom_point(aes(colour = !!rlang::sym(input$colorvar),
+                       y =!!rlang::sym(input$yvar) + scalar)) +
         scale_y_log10(breaks=c(0.01, 0.02, 0.1, 1, 10, 100, 1000, 10000, 100000),
                       labels=c(0, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000),
                       expand=c(0,0))
     } else {
-      pc <- pc + geom_line(alpha=1/2) + geom_point()
+      pc <- pc + geom_line(alpha=1/2) + 
+        geom_point(aes_string(colour = input$colorvar))
     }
     
     if (is.character(input$colorvar)) {
@@ -181,6 +188,19 @@ server <- function(input, output, session) {
     brushedPoints(site_dat(), zoomedplots_brush_trans())
   })
   
+
+  
+  output$hovertxt <- renderText({
+    req(input$plot_hover)
+    hover_format <- input$plot_hover
+    hover_format$mapping$y <- input$yvar
+    nearpoint <- nearPoints(site_dat(), hover_format, 
+                            threshold = 10, maxpoints = 1)
+    if (!is.null(nearpoint)) {
+      paste("X:", nearpoint[[input$xvar]],
+            "Y:", nearpoint[[input$yvar]])
+    }
+  })
   
   # output$brushrangetxt <- renderText({
   #   req(input$zoomedplot_brush)
@@ -284,7 +304,12 @@ ui <- function(request){
                         height='600px',
                         brush = brushOpts(id = "zoomedplot_brush", 
                                           clip = TRUE, 
-                                          resetOnNew = TRUE))
+                                          resetOnNew = TRUE),
+                        hover = hoverOpts(id="plot_hover",
+                                          delay = 10,
+                                          clip=F
+                        )
+             )
       )
     ),
     
@@ -299,6 +324,7 @@ ui <- function(request){
                #        actionButton('res', 'Group reset')),
                column(3,
                       downloadButton('save', 'Save'))),
+             verbatimTextOutput("hovertxt"),
              #verbatimTextOutput("brushrangetxt"),
              DT::dataTableOutput('brushrange')
       )
