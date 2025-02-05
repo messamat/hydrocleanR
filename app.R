@@ -108,6 +108,7 @@ server <- function(input, output, session) {
     dt$flags <- dt$flags[eval(input$xvar) %in% dt$data[[input$xvar]],]
   })
   
+  #Produce main plot
   main_plot <- reactive({
     req(dt$data)
     pc <- ggplot(dt$data, 
@@ -161,8 +162,60 @@ server <- function(input, output, session) {
     main_plot()
   })
   
-  # Create a reactiveVal to store the brush x-range.
+  # Create a reactive Value to store the brush x-range.
   savedBrush <- reactiveVal(NULL)
+  
+  # When the "Last 6 months" button is clicked
+  observeEvent(input$last_6months, {
+    req(savedBrush())  # Make sure there's a stored brush range
+    brush_dat <- savedBrush()
+    
+    # Shift by 1 month (30 days)
+    brush_dat$xmin <- brush_dat$xmin - 183
+    brush_dat$xmax <- brush_dat$xmax - 183
+    
+    # Save the new brush range
+    savedBrush(brush_dat)
+  })
+  
+  # When the "Next 6 months" button is clicked
+  observeEvent(input$next_6months, {
+    req(savedBrush())  # Make sure there's a stored brush range
+    brush_dat <- savedBrush()
+    
+    # Shift by 1 month (30 days)
+    brush_dat$xmin <- brush_dat$xmin + 183
+    brush_dat$xmax <- brush_dat$xmax + 183
+    
+    # Save the new brush range
+    savedBrush(brush_dat)
+  })
+  
+  # When the "Last 6 months" button is clicked
+  observeEvent(input$last_month, {
+    req(savedBrush())  # Make sure there's a stored brush range
+    brush_dat <- savedBrush()
+    
+    # Shift by 1 month (30 days)
+    brush_dat$xmin <- brush_dat$xmin - 30
+    brush_dat$xmax <- brush_dat$xmax - 30
+    
+    # Save the new brush range
+    savedBrush(brush_dat)
+  })
+  
+  # When the "Next 6 months" button is clicked
+  observeEvent(input$next_6month, {
+    req(savedBrush())  # Make sure there's a stored brush range
+    brush_dat <- savedBrush()
+    
+    # Shift by 1 month (30 days)
+    brush_dat$xmin <- brush_dat$xmin + 30
+    brush_dat$xmax <- brush_dat$xmax + 30
+    
+    # Save the new brush range
+    savedBrush(brush_dat)
+  })
   
   # Whenever the main plot brush updates, store its x-range.
   observe({
@@ -341,10 +394,14 @@ ui <- function(request){
              ),
              uiOutput("hover_info", style = "pointer-events: none"),
              fluidRow(
-               column(2,
-                      actionButton('del', "Delete")),
-               column(2,
-                      downloadButton('save', 'Save'))
+               column(2, actionButton('last_6months', "Last 6 months")),
+               column(2, actionButton('next_6months', "Next 6 months")),
+               column(2, actionButton('del', "Delete", 
+                                      style="color: #fff; background-color: #dd7055; border-color: darkred")),
+               column(2, downloadButton('save', 'Save', 
+                                        style="color: #fff; background-color: #337ab7; border-color: #2e6da4")),
+               column(2, actionButton('last_month', "Last month")),
+               column(2, actionButton('next_month', "Next month")),
              )
       )
     )
