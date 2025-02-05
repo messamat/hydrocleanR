@@ -51,12 +51,12 @@ server <- function(input, output, session) {
     
     #   The input updater functions send a message to the client, telling it to change the settings of an input object. 
     #   The messages are collected and sent after all the observers (including outputs) have finished running.
-    updateSelectInput(
-      session,
-      inputId = "groupvar",
-      choices = colnames(myData()),
-      selected = colnames(myData())[[1]]
-    )
+    # updateSelectInput(
+    #   session,
+    #   inputId = "groupvar",
+    #   choices = colnames(myData()),
+    #   selected = colnames(myData())[[1]]
+    # )
     
     #Create selection of variables based on input table
     updateSelectInput(
@@ -113,7 +113,7 @@ server <- function(input, output, session) {
     pc <- ggplot(dt$data, 
                  aes_string(x = input$xvar,
                             y = (input$yvar),
-                            group=input$groupvar)) 
+                            group=1)) 
     
     # if (input$colorvar == 'flags') {
     #   color_dat <- dt$flags
@@ -161,11 +161,26 @@ server <- function(input, output, session) {
     main_plot()
   })
   
+  # Create a reactiveVal to store the brush x-range.
+  savedBrush <- reactiveVal(NULL)
+  
+  # Whenever the main plot brush updates, store its x-range.
+  observe({
+    req(input$mainplot_brush)
+    # Save the brush's x-range as a list.
+    savedBrush(list(
+      xmin = input$mainplot_brush$xmin,
+      xmax = input$mainplot_brush$xmax
+    ))
+  })
+  
   # Modify zoomedplot to use the stored plot object
   output$zoomedplot <- renderPlot({
-    req(input$mainplot_brush)
-    brush_dat <- input$mainplot_brush
+    # Use the saved brush range.
+    brush_dat <- savedBrush()
+    req(brush_dat)  # Make sure it exists.
     
+    # If the checkbox for date conversion is on, convert the saved values.
     if (input$checkbox_date) {
       brush_dat$xmin <- as.Date(brush_dat$xmin, origin="1970-01-01")
       brush_dat$xmax <- as.Date(brush_dat$xmax, origin="1970-01-01")
@@ -239,9 +254,13 @@ server <- function(input, output, session) {
   
   observeEvent(input$del, {
     req(zoomedplots_brush_trans)
-    dt$data <- brushedPoints(dt$data,
-                             zoomedplots_brush_trans(),
-                             allRows=T)[selected_==FALSE]
+    # Get the brush selection and mark the selected points as deleted
+    selected_data <- brushedPoints(dt$data, 
+                                   zoomedplots_brush_trans(),
+                                   allRows = TRUE)
+    
+    # Set yvar to NA for the rows that will be deleted (selected_ == TRUE)
+    dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
   })
 
   output$save <- downloadHandler(
@@ -270,9 +289,9 @@ ui <- function(request){
                          ".qs",
                          '.fst')
              ),
-             selectInput("groupvar", 
-                         label = h5("Group variable"),
-                         ""),
+             # selectInput("groupvar", 
+             #             label = h5("Group variable"),
+             #             ""),
              selectInput("xvar", 
                          label = h5("X variable"),
                          ""),
@@ -322,9 +341,9 @@ ui <- function(request){
              ),
              uiOutput("hover_info", style = "pointer-events: none"),
              fluidRow(
-               column(3,
+               column(2,
                       actionButton('del', "Delete")),
-               column(3,
+               column(2,
                       downloadButton('save', 'Save'))
              )
       )
