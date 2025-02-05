@@ -12,6 +12,7 @@ library(tools)
 #source("helpers.R")
 options(shiny.maxRequestSize=2000*1024^2)
 
+############################## SERVER ##########################################
 server <- function(input, output, session) {
   dt <- reactiveValues(data = NULL,
                        flags = NULL)
@@ -102,26 +103,10 @@ server <- function(input, output, session) {
   #Pass date object to UI
   dd=reactiveValues(select=1)
   
-  # output$grouptable <- DT::renderDataTable(
-  #   table(), 
-  #   selection = list(mode='single', selected = dd$select)
-  # )
-  
-  #Get data to plot
-  # site_dat <- reactive({
-  #   req(dt$data)
-  #   #dd$select <- input$grouptable_rows_selected
-  #   site <- table()[dd$select, eval(input$groupvar), with=F][[1]]
-  #   sub <- dt$data[get(input$groupvar) == site,] #subset(dt$data, get(input$groupvar) == site) #
-  #   sub
-  # })
-  
   flag_dat <- reactive({
     req(input$xvar, dt$flags, dt$data)
     dt$flags <- dt$flags[eval(input$xvar) %in% dt$data[[input$xvar]],]
   })
-  
-  #output$sitedat <- DT::renderDataTable(site_dat())
   
   main_plot <- reactive({
     req(dt$data)
@@ -190,8 +175,16 @@ server <- function(input, output, session) {
       coord_cartesian(
         xlim=c(brush_dat$xmin, brush_dat$xmax),
         expand=FALSE,
-        clip='off') +
+        clip='off'
+      ) +
       theme(legend.position = 'none')
+  })
+  
+  #----------------------- Deal with zoomed plot brush -------------------------
+  brush_trans <- reactiveVal(NULL)
+  
+  observeEvent(input$zoomedplot_brush, {
+    brush_trans(input$zoomedplot_brush)
   })
   
   #Grab and transform zoomed plot selection
@@ -208,16 +201,46 @@ server <- function(input, output, session) {
     }
     zoomed_sel
   })
-  
+
+  #Display table of zoomed plot selection data
   output$brushrange <-  DT::renderDataTable({
-    req(zoomedplots_brush_trans)
-    brushedPoints(dt$data, zoomedplots_brush_trans())
+    req(brush_trans())
+    #req(zoomedplots_brush_trans)
+    brushed_df <- brushedPoints(dt$data, brush_trans())
+    #brushedPoints(dt$data, zoomedplots_brush_trans())
+    
+    if (nrow(brushed_df) == 0) return(NULL)  
+    
+    if (input$checkbox_scale > 1) {
+      zoomed_sel <- brushed_df 
+      if (input$checkbox_scale == 2) {
+        zoomed_sel$ymin <- (zoomed_sel$ymin)^2
+        zoomed_sel$ymax <- (zoomed_sel$ymax)^2
+      } else if (input$checkbox_scale == 3) {
+        zoomed_sel$mapping$y <- input$yvar
+        zoomed_sel$ymin <- (zoomed_sel$ymin)-0.01
+        zoomed_sel$ymax <- (zoomed_sel$ymax)-0.01
+      }
+      zoomed_sel
+    } else {
+      brushed_df 
+    }
   })
   
+  #-------------------- Deal with hover tooltip --------------------------------
+  hover_store <- reactiveVal(NULL)
+  
+  observeEvent(input$plot_hover, {
+    hover_store(input$plot_hover)
+  })
+  
+  #Display a tooltip of X-Y data on hover in the zoomed plot
   #https://gitlab.com/-/snippets/16220
   output$hover_info <- renderUI({
-    req(input$plot_hover)
-    hover <- input$plot_hover
+    # req(input$plot_hover)
+    # hover <- input$plot_hover
+    req(hover_store())
+    hover <- hover_store()
     hover$mapping$y <- input$yvar
     nearpoint <- nearPoints(dt$data, hover, 
                             threshold = 10, maxpoints = 1)
@@ -245,12 +268,12 @@ server <- function(input, output, session) {
     )
   })
   
-  observeEvent(input$del, {
-    req(zoomedplots_brush_trans)
-    dt$data <- brushedPoints(dt$data, 
-                             zoomedplots_brush_trans(),
-                             allRows=T)[selected_==FALSE]
-  })
+  # observeEvent(input$del, {
+  #   req(zoomedplots_brush_trans)
+  #   dt$data <- brushedPoints(dt$data, 
+  #                            zoomedplots_brush_trans(),
+  #                            allRows=T)[selected_==FALSE]
+  # })
 
   output$save <- downloadHandler(
     filename <- reactive({ 
@@ -263,6 +286,7 @@ server <- function(input, output, session) {
 }
 
 
+############################## UI ##############################################
 ui <- function(request){
   fluidPage(
     titlePanel("Time series cleaning app"),
@@ -317,8 +341,8 @@ ui <- function(request){
       column(5,
              plotOutput('zoomedplot',
                         height='600px',
-                        brush = brushOpts(id = "zoomedplot_brush", 
-                                          clip = TRUE, 
+                        brush = brushOpts(id = "zoomedplot_brush",
+                                          clip = TRUE,
                                           resetOnNew = TRUE),
                         hover = hoverOpts(id="plot_hover",
                                           delay = 10,
@@ -335,7 +359,7 @@ ui <- function(request){
       )
     )
     ,
-    
+
     fluidRow(
       # column(4,
       #        DT::dataTableOutput('grouptable')),
