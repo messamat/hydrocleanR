@@ -129,7 +129,7 @@ server <- function(input, output, session) {
     if (input$checkbox_scale == 2) {
       pc <- pc +
         geom_line(alpha=1/2) +
-        geom_point(data=dt$flags, aes_string(color = value)) +
+        geom_point(data=dt$flags, aes(color = value)) +
         scale_y_sqrt()
 
     } else if (input$checkbox_scale == 3) {
@@ -175,16 +175,8 @@ server <- function(input, output, session) {
       coord_cartesian(
         xlim=c(brush_dat$xmin, brush_dat$xmax),
         expand=FALSE,
-        clip='off'
-      ) +
+        clip='off') +
       theme(legend.position = 'none')
-  })
-  
-  #----------------------- Deal with zoomed plot brush -------------------------
-  brush_trans <- reactiveVal(NULL)
-  
-  observeEvent(input$zoomedplot_brush, {
-    brush_trans(input$zoomedplot_brush)
   })
   
   #Grab and transform zoomed plot selection
@@ -204,52 +196,29 @@ server <- function(input, output, session) {
 
   #Display table of zoomed plot selection data
   output$brushrange <-  DT::renderDataTable({
-    req(brush_trans())
-    #req(zoomedplots_brush_trans)
-    brushed_df <- brushedPoints(dt$data, brush_trans())
-    #brushedPoints(dt$data, zoomedplots_brush_trans())
+    req(zoomedplots_brush_trans)
+    brushed_df <- brushedPoints(dt$data, zoomedplots_brush_trans())
     
-    if (nrow(brushed_df) == 0) return(NULL)  
-    
-    if (input$checkbox_scale > 1) {
-      zoomed_sel <- brushed_df 
-      if (input$checkbox_scale == 2) {
-        zoomed_sel$ymin <- (zoomed_sel$ymin)^2
-        zoomed_sel$ymax <- (zoomed_sel$ymax)^2
-      } else if (input$checkbox_scale == 3) {
-        zoomed_sel$mapping$y <- input$yvar
-        zoomed_sel$ymin <- (zoomed_sel$ymin)-0.01
-        zoomed_sel$ymax <- (zoomed_sel$ymax)-0.01
-      }
-      zoomed_sel
+    if (nrow(brushed_df) == 0) {
+      return(NULL)  # Prevent errors on empty selection
     } else {
-      brushed_df 
+      return(brushed_df)
     }
-  })
-  
-  #-------------------- Deal with hover tooltip --------------------------------
-  hover_store <- reactiveVal(NULL)
-  
-  observeEvent(input$plot_hover, {
-    hover_store(input$plot_hover)
   })
   
   #Display a tooltip of X-Y data on hover in the zoomed plot
   #https://gitlab.com/-/snippets/16220
   output$hover_info <- renderUI({
-    # req(input$plot_hover)
-    # hover <- input$plot_hover
-    req(hover_store())
-    hover <- hover_store()
-    hover$mapping$y <- input$yvar
-    nearpoint <- nearPoints(dt$data, hover, 
-                            threshold = 10, maxpoints = 1)
+    req(input$plot_hover)
+    hover_dat <- isolate(input$plot_hover)
+    hover_dat$mapping$y <- input$yvar
+    nearpoint <- nearPoints(dt$data, hover_dat, threshold = 10, maxpoints = 1)
     if (nrow(nearpoint) == 0) return(NULL)
     
     # calculate point position INSIDE the image as percent of total dimensions
     # from left (horizontal) and from top (vertical)
-    left_px <- hover$coords_css$x
-    top_px <- hover$coords_css$y
+    left_px <- hover_dat$coords_css$x
+    top_px <- hover_dat$coords_css$y
     
     # create style property fot tooltip
     # background color is set so tooltip is a bit transparent
@@ -268,12 +237,12 @@ server <- function(input, output, session) {
     )
   })
   
-  # observeEvent(input$del, {
-  #   req(zoomedplots_brush_trans)
-  #   dt$data <- brushedPoints(dt$data, 
-  #                            zoomedplots_brush_trans(),
-  #                            allRows=T)[selected_==FALSE]
-  # })
+  observeEvent(input$del, {
+    req(zoomedplots_brush_trans)
+    dt$data <- brushedPoints(dt$data,
+                             zoomedplots_brush_trans(),
+                             allRows=T)[selected_==FALSE]
+  })
 
   output$save <- downloadHandler(
     filename <- reactive({ 
@@ -289,7 +258,7 @@ server <- function(input, output, session) {
 ############################## UI ##############################################
 ui <- function(request){
   fluidPage(
-    titlePanel("Time series cleaning app"),
+    #titlePanel("Time series cleaning app"),
     fluidRow(
       column(2, 
              #bookmarkButton(),
@@ -343,10 +312,12 @@ ui <- function(request){
                         height='600px',
                         brush = brushOpts(id = "zoomedplot_brush",
                                           clip = TRUE,
-                                          resetOnNew = TRUE),
+                                          resetOnNew = TRUE)
+                        ,
                         hover = hoverOpts(id="plot_hover",
                                           delay = 10,
-                                          clip=F
+                                          delayType = "debounce",
+                                          clip=T
                         )
              ),
              uiOutput("hover_info", style = "pointer-events: none"),
@@ -359,11 +330,12 @@ ui <- function(request){
       )
     )
     ,
-
+    # Place the table in its own fluidRow and wrap it in a fixed-height, scrollable div.
     fluidRow(
-      # column(4,
-      #        DT::dataTableOutput('grouptable')),
-      DT::dataTableOutput('brushrange')
+      div(id = "table_container", 
+          style = "height:300px; overflow-y:auto; margin-top: 0px;",
+          DT::dataTableOutput('brushrange')
+      )
     )
   )
 }
