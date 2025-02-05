@@ -214,16 +214,35 @@ server <- function(input, output, session) {
     brushedPoints(dt$data, zoomedplots_brush_trans())
   })
   
-  output$hovertxt <- renderText({
+  #https://gitlab.com/-/snippets/16220
+  output$hover_info <- renderUI({
     req(input$plot_hover)
-    hover_format <- input$plot_hover
-    hover_format$mapping$y <- input$yvar
-    nearpoint <- nearPoints(dt$data, hover_format, 
+    hover <- input$plot_hover
+    hover$mapping$y <- input$yvar
+    nearpoint <- nearPoints(dt$data, hover, 
                             threshold = 10, maxpoints = 1)
-    if (!is.null(nearpoint)) {
-      paste("X:", nearpoint[[input$xvar]],
-            "Y:", nearpoint[[input$yvar]])
-    }
+    if (nrow(nearpoint) == 0) return(NULL)
+    
+    # calculate point position INSIDE the image as percent of total dimensions
+    # from left (horizontal) and from top (vertical)
+    left_px <- hover$coords_css$x
+    top_px <- hover$coords_css$y
+    
+    # create style property fot tooltip
+    # background color is set so tooltip is a bit transparent
+    # z-index is set so we are sure are tooltip will be on top
+    style_hover <- paste0(
+      "position:absolute; z-index:100; background-color: rgba(245, 245, 245, 0.85); ",
+      "left:", left_px + 2, "px; top:", top_px + 2, "px;")
+    
+    # actual tooltip created as wellPanel
+    wellPanel(
+      style = style_hover,
+      p(HTML(paste0("<b>", input$xvar, ": </b>", 
+                    nearpoint[[input$xvar]], "<br/>",
+                    "<b>", input$yvar, ": </b>", 
+                    nearpoint[[input$yvar]], "<br/>")))
+    )
   })
   
   observeEvent(input$del, {
@@ -232,7 +251,7 @@ server <- function(input, output, session) {
                              zoomedplots_brush_trans(),
                              allRows=T)[selected_==FALSE]
   })
-  
+
   output$save <- downloadHandler(
     filename <- reactive({ 
       paste(file_path_sans_ext(inFile()$name), '_edit.csv', sep = '') 
@@ -255,7 +274,8 @@ ui <- function(request){
                          "text/csv",
                          "text/comma-separated-values,text/plain",
                          ".csv",
-                         ".qs")
+                         ".qs",
+                         '.fst')
              ),
              selectInput("groupvar", 
                          label = h5("Group variable"),
@@ -304,25 +324,22 @@ ui <- function(request){
                                           delay = 10,
                                           clip=F
                         )
+             ),
+             uiOutput("hover_info", style = "pointer-events: none"),
+             fluidRow(
+               column(3,
+                      actionButton('del', "Delete")),
+               column(3,
+                      downloadButton('save', 'Save'))
              )
       )
-    ),
+    )
+    ,
     
     fluidRow(
       # column(4,
       #        DT::dataTableOutput('grouptable')),
-      column(8,
-             fluidRow(
-               column(3,
-                      actionButton('del', "Delete")),
-               # column(3,
-               #        actionButton('res', 'Group reset')),
-               column(3,
-                      downloadButton('save', 'Save'))),
-             verbatimTextOutput("hovertxt"),
-             #verbatimTextOutput("brushrangetxt"),
-             DT::dataTableOutput('brushrange')
-      )
+      DT::dataTableOutput('brushrange')
     )
   )
 }
