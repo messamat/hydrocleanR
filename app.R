@@ -1,9 +1,9 @@
 library(shiny)
+library(shinyBS)
 #Make sure to keep library(DT) after Shiny as it overrides it
 library(DT)
 library(data.table)
-#library(quantmod)
-#library(plyr)
+library(fst)
 library(ggplot2)
 library(qs)
 #library(reactlog) #for debugging: https://shiny.posit.co/r/getstarted/build-an-app/reactivity-essentials/using-reactives.html
@@ -13,7 +13,8 @@ library(tools)
 options(shiny.maxRequestSize=2000*1024^2)
 
 server <- function(input, output, session) {
-  dt <- reactiveValues(data = NULL)
+  dt <- reactiveValues(data = NULL,
+                       flags = NULL)
   
   inFile <- reactive({
     if (is.null(input$file)){
@@ -30,6 +31,8 @@ server <- function(input, output, session) {
       #Don't forget () after a variable set as reactive
       if (tools::file_ext(inFile()$datapath)=='csv') {
         fread(inFile()$datapath)
+      } else if (tools::file_ext(inFile()$datapath)=='fst') { 
+        as.data.table(read_fst(inFile()$datapath))
       } else if (tools::file_ext(inFile()$datapath)=='qs') {
         as.data.table(qread(inFile()$datapath))
       }
@@ -72,7 +75,7 @@ server <- function(input, output, session) {
     updateSelectInput(
       session,
       inputId = "colorvar",
-      choices= colnames(myData()))
+      choices= c('flags', colnames(myData()), 'none'))
   })
   
   #Create data
@@ -85,65 +88,87 @@ server <- function(input, output, session) {
     }
   })
   
-  #Create table of sites
-  table <- reactive({
-    sites <- unique(dt$data[, eval(input$groupvar), with=F])
-    sites_dt <- data.table(Groups = sites, Marked = rep(NA, length(sites)))
-    colnames(sites_dt)[1] <- eval(input$groupvar)
-    sites_dt
+  #Create flags
+  observe({
+    if (!is.null(dt$data)) {
+      dt$flags <- melt(dt$data,
+                       id.vars=grep('tag_([2-9]|10)', names(dt$data),
+                                    value=T, invert=T)
+      ) %>%
+        .[!is.na(value),]
+    }
   })
   
   #Pass date object to UI
   dd=reactiveValues(select=1)
   
-  output$grouptable <- DT::renderDataTable(
-    table(), 
-    selection = list(mode='single', selected = dd$select)
-  )
+  # output$grouptable <- DT::renderDataTable(
+  #   table(), 
+  #   selection = list(mode='single', selected = dd$select)
+  # )
   
   #Get data to plot
-  site_dat <- reactive({
-    req(dt$data)
-    dd$select <- input$grouptable_rows_selected
-    site <- table()[dd$select, eval(input$groupvar), with=F][[1]]
-    sub <- dt$data[get(input$groupvar) == site,] #subset(dt$data, get(input$groupvar) == site) #
-    sub
+  # site_dat <- reactive({
+  #   req(dt$data)
+  #   #dd$select <- input$grouptable_rows_selected
+  #   site <- table()[dd$select, eval(input$groupvar), with=F][[1]]
+  #   sub <- dt$data[get(input$groupvar) == site,] #subset(dt$data, get(input$groupvar) == site) #
+  #   sub
+  # })
+  
+  flag_dat <- reactive({
+    req(input$xvar, dt$flags, dt$data)
+    dt$flags <- dt$flags[eval(input$xvar) %in% dt$data[[input$xvar]],]
   })
   
   #output$sitedat <- DT::renderDataTable(site_dat())
   
   main_plot <- reactive({
-    req(site_dat())
-    pc <- ggplot(site_dat(), 
+    req(dt$data)
+    pc <- ggplot(dt$data, 
                  aes_string(x = input$xvar,
                             y = (input$yvar),
                             group=input$groupvar)) 
     
+    # if (input$colorvar == 'flags') {
+    #   color_dat <- dt$flags
+    #   colorvar = 'value'
+    # } else if (input$colorvar == 'none') {
+    #   color_dat <- NA
+    #   colorvar <- NA
+    # } else {
+    #   color_dat <- dt$data
+    #   colorvar <- input$colorvar
+    # }
+    #
     if (input$checkbox_scale == 2) {
-      pc <- pc + 
-        geom_line(alpha=1/2) + 
-        geom_point(aes_string(colour = input$colorvar)) + 
+      pc <- pc +
+        geom_line(alpha=1/2) +
+        geom_point(data=dt$flags, aes_string(color = value)) +
         scale_y_sqrt()
-      
+
     } else if (input$checkbox_scale == 3) {
       scalar <- 0.01
-      pc <- pc + 
-        geom_line(aes(y =!!rlang::sym(input$yvar) + scalar), alpha=1/2) +
-        geom_point(aes(colour = !!rlang::sym(input$colorvar),
+      pc <- pc +
+        geom_line(aes(y =!!rlang::sym(input$yvar) + scalar),
+                  alpha=1/2) +
+        geom_point(data=dt$flags,
+                   aes(colour = value,
                        y =!!rlang::sym(input$yvar) + scalar)) +
         scale_y_log10(breaks=c(0.01, 0.02, 0.1, 1, 10, 100, 1000, 10000, 100000),
                       labels=c(0, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000),
                       expand=c(0,0))
     } else {
-      pc <- pc + geom_line(alpha=1/2) + 
-        geom_point(aes_string(colour = input$colorvar))
+      pc <- pc + geom_line(alpha=1/2) +
+        geom_point(data=dt$flags,
+                   aes_string(color = 'value'))
     }
-    
+
     if (is.character(input$colorvar)) {
-      if (class(site_dat()[[eval(input$colorvar)]]) %in% c('integer', 'numeric')) {
+      if (class(dt$data[[eval(input$colorvar)]]) %in% c('integer', 'numeric')) {
         pc <- pc + scale_color_distiller(palette='Spectral')
       }
-    } 
+    }
     pc + theme_bw()
   })
   
@@ -165,7 +190,8 @@ server <- function(input, output, session) {
       coord_cartesian(
         xlim=c(brush_dat$xmin, brush_dat$xmax),
         expand=FALSE,
-        clip='off')
+        clip='off') +
+      theme(legend.position = 'none')
   })
   
   #Grab and transform zoomed plot selection
@@ -185,16 +211,14 @@ server <- function(input, output, session) {
   
   output$brushrange <-  DT::renderDataTable({
     req(zoomedplots_brush_trans)
-    brushedPoints(site_dat(), zoomedplots_brush_trans())
+    brushedPoints(dt$data, zoomedplots_brush_trans())
   })
-  
-
   
   output$hovertxt <- renderText({
     req(input$plot_hover)
     hover_format <- input$plot_hover
     hover_format$mapping$y <- input$yvar
-    nearpoint <- nearPoints(site_dat(), hover_format, 
+    nearpoint <- nearPoints(dt$data, hover_format, 
                             threshold = 10, maxpoints = 1)
     if (!is.null(nearpoint)) {
       paste("X:", nearpoint[[input$xvar]],
@@ -202,42 +226,12 @@ server <- function(input, output, session) {
     }
   })
   
-  # output$brushrangetxt <- renderText({
-  #   req(input$zoomedplot_brush)
-  #   if(!is.null(input$zoomedplot_brush$xmin)) {
-  #     range_dt <- data.table(
-  #       xmin = input$zoomedplot_brush$xmin,
-  #       xmax = input$zoomedplot_brush$xmax,
-  #       ymin = input$zoomedplot_brush$ymin,
-  #       ymax = input$zoomedplot_brush$ymax
-  #     )
-  #     if (input$checkbox_date) {
-  #       range_dt$xmin <- as.Date(range_dt$xmin, origin="1970-01-01")
-  #       range_dt$xmax <- as.Date(range_dt$xmax, origin="1970-01-01")
-  # 
-  #     }
-  #     paste0("xmin=", range_dt$xmin, "\nxmax=", range_dt$xmax,
-  #            "\nymin=", range_dt$ymin, "  ymax=", range_dt$ymax)
-  #   } else {
-  #     print("Selected range")
-  #   }
-  # })
-  
   observeEvent(input$del, {
     req(zoomedplots_brush_trans)
-    dt$data <- brushedPoints(site_dat(), 
+    dt$data <- brushedPoints(dt$data, 
                              zoomedplots_brush_trans(),
-                             allRows=T)[selected_ == FALSE,]
+                             allRows=T)[selected_==FALSE]
   })
-  
-  # observeEvent(input$res, {
-  #   dd$select <- input$grouptable_rows_selected
-  #   site <- table()[dd$select, eval(input$groupvar), with=F]
-  #   dt$data <- dt$data[!(get(input$groupvar) == site),]
-  #   dt$data <- rbind(dt$data,
-  #                    myData()[get(input$groupvar) == site,]
-  #   )
-  # })
   
   output$save <- downloadHandler(
     filename <- reactive({ 
@@ -256,7 +250,7 @@ ui <- function(request){
     fluidRow(
       column(2, 
              #bookmarkButton(),
-             fileInput("file", label = h3("Data table (.csv, .qs)"),
+             fileInput("file", label = h3("Data table (.csv, .qs, .fst)"),
                        accept = c(
                          "text/csv",
                          "text/comma-separated-values,text/plain",
@@ -288,7 +282,8 @@ ui <- function(request){
              
              selectInput("colorvar",
                          label = h5("Color-coding variable"),
-                         "")
+                         choices = "flags",
+                         selected = 1)
              
       ),
       column(5,
@@ -314,8 +309,8 @@ ui <- function(request){
     ),
     
     fluidRow(
-      column(4,
-             DT::dataTableOutput('grouptable')),
+      # column(4,
+      #        DT::dataTableOutput('grouptable')),
       column(8,
              fluidRow(
                column(3,
