@@ -17,14 +17,6 @@ server <- function(input, output, session) {
   dt <- reactiveValues(data = NULL,
                        flags = NULL)
   
-  # inFile <- reactive({
-  #   if (is.null(input$file)){
-  #     return(NULL)
-  #   } else {
-  #     input$file
-  #   }
-  # })
-  
   myData <- reactive({
     req(input$file)
     if (is.null(input$file)){
@@ -39,6 +31,23 @@ server <- function(input, output, session) {
         as.data.table(qread(input$file$datapath))
       }
     }
+  })
+  
+  output$download_link <- renderUI({
+    req(input$file)  # Ensure the path is selected before generating the link
+    
+    # Create a clickable link using tags$a()
+    site_url <- sprintf('https://hydro.eaufrance.fr/sitehydro/%s/fiche', 
+                      regmatches(input$file$name, 
+                                 regexec('(?<=site_)[A-Z0-9]+', 
+                                         input$file$name, 
+                                         perl=T)
+                      )
+    )
+
+    tags$a(href = site_url,
+           "Hydroportail",
+           target = "_blank")
   })
   
   #An observer is like a reactive expression in that it can read reactive values and call reactive expressions, 
@@ -94,7 +103,7 @@ server <- function(input, output, session) {
     # if (input$checkbox_date & (input$xvar %in% colnames(dt$data))) {
     #   dt$data[, (input$xvar) := as.Date(get(input$xvar))]
     # }
-    if (input$checkbox_date & ('date' %in% colnames(dt$data))) {
+    if ('date' %in% colnames(dt$data)) { #(input$checkbox_date & 
       dt$data[, date := as.Date(date)]
     }
   })
@@ -126,21 +135,21 @@ server <- function(input, output, session) {
     #                         group=1)) 
     pc <- ggplot(dt$data, aes(x = date, y = flow, group=1)) 
     
-    # if (input$colorvar == 'flags') {
-    #   color_dat <- dt$flags
-    #   colorvar = 'value'
-    # } else if (input$colorvar == 'none') {
-    #   color_dat <- NA
-    #   colorvar <- NA
-    # } else {
-    #   color_dat <- dt$data
-    #   colorvar <- input$colorvar
-    # }
-    #
+    if (input$colorvar == 'flags') {
+      color_dat <- dt$flags
+      colorvar = 'value'
+    } else if (input$colorvar == 'none') {
+      color_dat <- NA
+      colorvar <- NA
+    } else {
+      color_dat <- dt$data
+      colorvar <- input$colorvar
+    }
+
     if (input$checkbox_scale == 2) {
       pc <- pc +
         geom_line(alpha=1/2) +
-        geom_point(data=dt$flags, aes(color = value)) +
+        geom_point(data=color_dat, aes(color = !!rlang::sym(colorvar))) +
         scale_y_sqrt()
 
     } else if (input$checkbox_scale == 3) {
@@ -149,8 +158,8 @@ server <- function(input, output, session) {
         # geom_line(aes(y =!!rlang::sym(input$yvar) + scalar),
         #           alpha=1/2) +
         geom_line(aes(y = flow + scalar), alpha=1/2) +
-        geom_point(data=dt$flags,
-                   aes(colour = value,
+        geom_point(data=color_dat,
+                   aes(colour = !!rlang::sym(colorvar),
                        y = flow + scalar)) +
                        # y =!!rlang::sym(input$yvar) + scalar)) +
         scale_y_log10(breaks=c(0.01, 0.02, 0.1, 1, 10, 100, 1000, 10000, 100000),
@@ -158,8 +167,8 @@ server <- function(input, output, session) {
                       expand=c(0,0))
     } else {
       pc <- pc + geom_line(alpha=1/2) +
-        geom_point(data=dt$flags,
-                   aes_string(color = 'value'))
+        geom_point(data=color_dat,
+                   aes_string(color = colorvar))
     }
 
     if (is.character(input$colorvar)) {
@@ -167,7 +176,8 @@ server <- function(input, output, session) {
         pc <- pc + scale_color_distiller(palette='Spectral')
       }
     }
-    pc + theme_bw()
+    pc + theme_bw() +
+      theme(text = element_text(size = 16))
   })
   
   output$mainplot <- renderPlot({
@@ -182,7 +192,7 @@ server <- function(input, output, session) {
     req(savedBrush())  # Make sure there's a stored brush range
     brush_dat <- savedBrush()
     
-    # Shift by 1 month (30 days)
+    # Shift by 6 months
     brush_dat$xmin <- brush_dat$xmin - 183
     brush_dat$xmax <- brush_dat$xmax - 183
     
@@ -217,7 +227,7 @@ server <- function(input, output, session) {
   })
   
   # When the "Next 6 months" button is clicked
-  observeEvent(input$next_6month, {
+  observeEvent(input$next_month, {
     req(savedBrush())  # Make sure there's a stored brush range
     brush_dat <- savedBrush()
     
@@ -246,10 +256,10 @@ server <- function(input, output, session) {
     req(brush_dat)  # Make sure it exists.
     
     # If the checkbox for date conversion is on, convert the saved values.
-    if (input$checkbox_date) {
-      brush_dat$xmin <- as.Date(brush_dat$xmin, origin="1970-01-01")
-      brush_dat$xmax <- as.Date(brush_dat$xmax, origin="1970-01-01")
-    }
+    #if (input$checkbox_date) {
+    brush_dat$xmin <- as.Date(brush_dat$xmin, origin="1970-01-01")
+    brush_dat$xmax <- as.Date(brush_dat$xmax, origin="1970-01-01")
+    #}
     
     main_plot() +
       coord_cartesian(
@@ -276,16 +286,18 @@ server <- function(input, output, session) {
   })
 
   #Display table of zoomed plot selection data
-  output$brushrange <-  DT::renderDataTable({
-    req(zoomedplots_brush_trans)
-    brushed_df <- brushedPoints(dt$data, zoomedplots_brush_trans())
-    
-    if (nrow(brushed_df) == 0) {
-      return(NULL)  # Prevent errors on empty selection
-    } else {
-      return(brushed_df)
-    }
-  })
+  output$brushrange <-  DT::renderDataTable(
+    expr = {
+      req(zoomedplots_brush_trans)
+      brushed_df <- brushedPoints(dt$data, zoomedplots_brush_trans())
+      
+      if (nrow(brushed_df) == 0) {
+        return(NULL)  # Prevent errors on empty selection
+      } else {
+        return(brushed_df)
+      }
+    }, 
+    options = list(iDisplayLength = 50))
   
   #Display a tooltip of X-Y data on hover in the zoomed plot
   #https://gitlab.com/-/snippets/16220
@@ -351,9 +363,9 @@ ui <- function(request){
   fluidPage(
     #titlePanel("Time series cleaning app"),
     fluidRow(
-      column(2, 
+      column(1, 
              #bookmarkButton(),
-             fileInput("file", label = h5("Data table (.csv, .qs, .fst)"),
+             fileInput("file", label = h5("Data table"),
                        accept = c(
                          "text/csv",
                          "text/comma-separated-values,text/plain",
@@ -369,9 +381,9 @@ ui <- function(request){
              #                choices = "",
              #                options = list(closeAfterSelect=TRUE)
              #                ),
-             checkboxInput("checkbox_date",
-                           label = "Convert X variable to dates?", 
-                           value = T),
+             # checkboxInput("checkbox_date",
+             #               label = "Convert X variable to dates?", 
+             #               value = T),
              # print("Warning: once checked, unchecking will cancel
              #       temporary changes to data"),
              
@@ -389,10 +401,12 @@ ui <- function(request){
              selectInput("colorvar",
                          label = h5("Color-coding variable"),
                          choices = "flags",
-                         selected = 1)
+                         selected = 1),
+             
+             uiOutput("download_link") 
              
       ),
-      column(5,
+      column(4,
              plotOutput('mainplot',
                         height='600px',
                         brush = brushOpts(id = "mainplot_brush", 
@@ -400,7 +414,7 @@ ui <- function(request){
                                           resetOnNew = TRUE,
                                           direction = "x"))
       ),
-      column(5,
+      column(6,
              plotOutput('zoomedplot',
                         height='600px',
                         brush = brushOpts(id = "zoomedplot_brush",
