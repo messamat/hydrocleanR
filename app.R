@@ -118,7 +118,7 @@ server <- function(input, output, session) {
   observe({
     if (!is.null(dt$data)) {
       dt$flags <- melt(dt$data,
-                       id.vars=grep('tag_([2-9]|10)', names(dt$data),
+                       id.vars=grep('tag_([2-9]|10)|(visual_flag)', names(dt$data),
                                     value=T, invert=T)
       ) %>%
         .[!is.na(value),]
@@ -390,6 +390,20 @@ server <- function(input, output, session) {
     )
   })
   
+  #Flag as suspect -------------------------------------------------------------
+  observeEvent(input$flag_suspect, {
+    req(zoomedplots_brush_trans)
+    # Get the brush selection and mark the selected points as deleted
+    selected_data <- brushedPoints(dt$data, 
+                                   zoomedplots_brush_trans(),
+                                   allRows = TRUE)
+    
+    # Set yvar to NA for the rows that will be deleted (selected_ == TRUE)
+    dt$data[selected_data$selected_ == TRUE, 'visual_flag'] <- 'Visually suspect'
+    # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
+  })
+  
+  
   #Delete points ---------------------------------------------------------------
   observeEvent(input$del, {
     req(zoomedplots_brush_trans)
@@ -515,6 +529,8 @@ ui <- function(request){
                actionButton('del', "Delete", 
                                       style="color: #fff; background-color: #dd7055; border-color: darkred"),
                actionButton('del_flagged', "Delete flagged points", 
+                            style="color: #fff; background-color: #dd7055; border-color: darkred"),
+               actionButton('flag_suspect', "Flag as suspect", 
                             style="color: #fff; background-color: #dd7055; border-color: darkred"),
                downloadButton('save', 'Save', 
                                         style="color: #fff; background-color: #337ab7; border-color: #2e6da4")
