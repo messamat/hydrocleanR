@@ -134,11 +134,27 @@ server <- function(input, output, session) {
   #Produce main plot
   main_plot <- reactive({
     req(dt$data)
+    
+    #Background rectangle for included or excluded years
+    if ('tag_1' %in% colnames(dt$data)) {
+      rect_df <- dt$data[, list(tag_1 = tag_1[[1]],
+                                xmin=min(date),
+                                xmax=max(date)
+      ), by=rleid(tag_1)] %>%
+        .[tag_1 == FALSE,] %>%
+        .[, `:=`(ymin = min(dt$data$flow, na.rm=T),
+                 ymax = max(dt$data$flow, na.rm=T))]
+    }
+
     # pc <- ggplot(dt$data, 
     #              aes_string(x = input$xvar,
     #                         y = (input$yvar),
     #                         group=1)) 
-    pc <- ggplot(dt$data, aes(x = date, y = flow, group=1)) 
+    pc <- ggplot(dt$data, aes(x = date, y = flow, group=1)) +
+      geom_rect(data=rect_df, 
+                aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                fill='red', alpha=1/7, inherit.aes = FALSE)
+      
     
     if (input$colorvar == 'flags') {
       color_dat <- dt$flags
@@ -154,7 +170,8 @@ server <- function(input, output, session) {
     if (input$checkbox_scale == 2) {
       pc <- pc +
         geom_line(alpha=1/2, color='#3A76C0') +
-        geom_point(data=color_dat, aes(color = !!rlang::sym(colorvar))) +
+        geom_point(data=color_dat, aes(color = !!rlang::sym(colorvar)),
+                   size=2) +
         scale_y_sqrt()
       
     } else if (input$checkbox_scale == 3) {
@@ -162,18 +179,19 @@ server <- function(input, output, session) {
       pc <- pc +
         # geom_line(aes(y =!!rlang::sym(input$yvar) + scalar),
         #           alpha=1/2) +
-        geom_line(aes(y = flow + scalar), alpha=1/2, color='#3A76C0') +
+        geom_line(aes(y = flow + scalar, color=tag_1), alpha=1/2, color='#3A76C0') +
         geom_point(data=color_dat,
                    aes(colour = !!rlang::sym(colorvar),
-                       y = flow + scalar)) +
+                       y = flow + scalar),
+                   size=2) +
         # y =!!rlang::sym(input$yvar) + scalar)) +
         scale_y_log10(breaks=c(0.01, 0.02, 0.1, 1, 10, 100, 1000, 10000, 100000),
                       labels=c(0, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000),
                       expand=c(0,0))
     } else {
-      pc <- pc + geom_line(alpha=1/2) +
-        geom_point(data=color_dat,
-                   aes_string(color = colorvar))
+      pc <- pc + geom_line(alpha=1/2, color='#3A76C0') +
+        geom_point(data=color_dat, aes(color = !!rlang::sym(colorvar)),
+                   size=2)
     }
     
     if (is.character(input$colorvar)) {
@@ -204,14 +222,25 @@ server <- function(input, output, session) {
     #if (input$checkbox_date) {
     brush_dat$xmin <- as.Date(brush_dat$xmin, origin="1970-01-01")
     brush_dat$xmax <- as.Date(brush_dat$xmax, origin="1970-01-01")
-    #}
     
+    if (input$colorvar == 'flags') {
+      color_dat <- dt$flags
+      colorvar = 'value'
+    } else if (input$colorvar == 'none') {
+      color_dat <- NA
+      colorvar <- NA
+    } else {
+      color_dat <- dt$data
+      colorvar <- input$colorvar
+    }
+
     main_plot() +
-      #geom_point(color = 'black', shape=1, alpha=1/4) +
+      geom_point(data=dt$data[!(date %in% color_dat$date),],
+                 color = 'black', alpha=1/10) +
       coord_cartesian(
         xlim=c(brush_dat$xmin, brush_dat$xmax),
-        expand=FALSE,
-        clip='on') +
+        clip='on',
+        expand = FALSE) +
       theme(legend.position = 'none')
   })
   
@@ -532,7 +561,7 @@ ui <- function(request){
              uiOutput("download_link") 
              
       ),
-      column(4,
+      column(5,
              plotOutput('mainplot',
                         height='600px',
                         brush = brushOpts(id = "mainplot_brush", 
