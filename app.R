@@ -17,6 +17,8 @@ server <- function(input, output, session) {
   dt <- reactiveValues(data = NULL,
                        flags = NULL)
   
+  zoom_history <- reactiveVal(list())
+  
   myData <- reactive({
     req(input$file)
     if (is.null(input$file)){
@@ -103,6 +105,10 @@ server <- function(input, output, session) {
     # if (input$checkbox_date & (input$xvar %in% colnames(dt$data))) {
     #   dt$data[, (input$xvar) := as.Date(get(input$xvar))]
     # }
+    if ('flow' %in% colnames(dt$data)) {
+      dt$data[, flow_backup := flow]
+    }
+    
     if ('date' %in% colnames(dt$data)) { #(input$checkbox_date & 
       dt$data[, date := as.Date(date)]
     }
@@ -217,6 +223,10 @@ server <- function(input, output, session) {
     brush_dat$xmin <- brush_dat$xmin - 183
     brush_dat$xmax <- brush_dat$xmax - 183
     
+    # Save the current zoom state before updating
+    history <- zoom_history()
+    zoom_history(append(history, list(brush_dat)))
+    
     # Save the new brush range
     savedBrush(brush_dat)
   })
@@ -225,6 +235,10 @@ server <- function(input, output, session) {
   observeEvent(input$next_6months, {
     req(savedBrush())  # Make sure there's a stored brush range
     brush_dat <- savedBrush()
+    
+    # Save the current zoom state before updating
+    history <- zoom_history()
+    zoom_history(append(history, list(brush_dat)))
     
     # Shift by 1 month (30 days)
     brush_dat$xmin <- brush_dat$xmin + 183
@@ -239,6 +253,10 @@ server <- function(input, output, session) {
     req(savedBrush())  # Make sure there's a stored brush range
     brush_dat <- savedBrush()
     
+    # Save the current zoom state before updating
+    history <- zoom_history()
+    zoom_history(append(history, list(brush_dat)))
+    
     # Shift by 1 month (30 days)
     brush_dat$xmin <- brush_dat$xmin - 30
     brush_dat$xmax <- brush_dat$xmax - 30
@@ -251,6 +269,10 @@ server <- function(input, output, session) {
   observeEvent(input$next_month, {
     req(savedBrush())  # Make sure there's a stored brush range
     brush_dat <- savedBrush()
+    
+    # Save the current zoom state before updating
+    history <- zoom_history()
+    zoom_history(append(history, list(brush_dat)))
     
     # Shift by 1 month (30 days)
     brush_dat$xmin <- brush_dat$xmin + 30
@@ -295,7 +317,7 @@ server <- function(input, output, session) {
       if (nrow(brushed_df) == 0) {
         return(NULL)  # Prevent errors on empty selection
       } else {
-        return(brushed_df)
+        return(brushed_df[, !'flow_backup', with=F])
       }
     }, 
     options = list(iDisplayLength = 50))
@@ -303,14 +325,33 @@ server <- function(input, output, session) {
   #Allow zooming to zoomed plot selection data----------------------------------
   observeEvent(input$zoomplot_to_selection, {
     req(input$zoomedplot_brush)
+    
+    #Get the current zoome range
     brush_dat <- savedBrush()
     
-    # Shift by 1 month (30 days)
+    # Save the current zoom state before updating
+    history <- zoom_history()
+    zoom_history(append(history, list(brush_dat)))
+    
+    # Update zoom range based on selection
     brush_dat$xmin <- input$zoomedplot_brush$xmin
     brush_dat$xmax <- input$zoomedplot_brush$xmax
     
     # Save the new brush range
     savedBrush(brush_dat)
+  })
+  
+  #Go back zoom observer -------------------------------------------------------
+  observeEvent(input$go_back_zoom, {
+    history <- zoom_history()
+    req(length(history) > 0)  # Ensure there's history to go back to
+    
+    # Pop the last zoom state
+    last_zoom <- tail(history, 1)[[1]]
+    zoom_history(head(history, -1))  # Remove last state from history
+    
+    # Restore the previous zoom
+    savedBrush(last_zoom)
   })
   
   #Display a tooltip of X-Y data on hover in the zoomed plot--------------------
@@ -445,17 +486,18 @@ ui <- function(request){
              ),
              uiOutput("hover_info", style = "pointer-events: none"),
              fluidRow(
-               column(2, actionButton('last_6months', "Last 6 months")),
-               column(2, actionButton('next_6months', "Next 6 months")),
-               column(2, actionButton('zoomplot_to_selection', 'Zoom to selection')),
-               column(2, actionButton('last_month', "Last month")),
-               column(2, actionButton('next_month', "Next month")),
+               actionButton('last_6months', "Last 6 months"),
+               actionButton('next_6months', "Next 6 months"),
+               actionButton('zoomplot_to_selection', 'Zoom to selection'),
+               actionButton("go_back_zoom", "Undo zoom"),
+               actionButton('last_month', "Last month"),
+               actionButton('next_month', "Next month"),
              ),
              fluidRow(
-               column(2, actionButton('del', "Delete", 
-                                      style="color: #fff; background-color: #dd7055; border-color: darkred")),
-               column(2, downloadButton('save', 'Save', 
-                                        style="color: #fff; background-color: #337ab7; border-color: #2e6da4"))
+               actionButton('del', "Delete", 
+                                      style="color: #fff; background-color: #dd7055; border-color: darkred"),
+               downloadButton('save', 'Save', 
+                                        style="color: #fff; background-color: #337ab7; border-color: #2e6da4")
              ),
       )
     )
