@@ -5,6 +5,7 @@ library(DT)
 library(data.table)
 library(fst)
 library(ggplot2)
+library(hubeau)
 library(qs)
 #library(reactlog) #for debugging: https://shiny.posit.co/r/getstarted/build-an-app/reactivity-essentials/using-reactives.html
 library(tools)
@@ -35,21 +36,47 @@ server <- function(input, output, session) {
     }
   })
   
-  output$download_link <- renderUI({
+  output$hydroportail_ui <- renderUI({
     req(input$file)  # Ensure the path is selected before generating the link
+    
+    
+    code_site <- regmatches(input$file$name, 
+                            regexec('(?<=site_)[A-Z0-9]+', 
+                                    input$file$name, 
+                                    perl=T)
+    )[[1]]
     
     # Create a clickable link using tags$a()
     site_url <- sprintf('https://hydro.eaufrance.fr/sitehydro/%s/fiche', 
-                        regmatches(input$file$name, 
-                                   regexec('(?<=site_)[A-Z0-9]+', 
-                                           input$file$name, 
-                                           perl=T)
-                        )
-    )
+                        code_site)
     
-    tags$a(href = site_url,
-           "Hydroportail",
-           target = "_blank")
+
+    
+    #Get info from hubeau
+    site_metadata <- hubeau::get_hydrometrie_sites(code_site = code_site)
+    if (nrow(site_metadata) > 0) {
+      
+      influence_ref <- data.table(code=as.character(seq(0,4)),
+                                  text=c('inconnue', 'nulle ou faible',
+                                         'en étiage seulement', 'forte',
+                                         'hautes eaux seulement'))
+      site_metadata_text <- paste(
+        'Site:', site_metadata$code_site, "<br/>",
+        site_metadata$libelle_site, "<br/>",
+        'Surface BV:', site_metadata$surface_bv, "km<sup>2</sup> <br/>",
+        'Influence: ', influence_ref[
+          code == site_metadata$influence_generale_site,]$text, "<br/>",
+        'Commentaire influence:', site_metadata$commentaire_influence_generale_site
+      )
+      
+      wellPanel(
+        tags$a(href = site_url,
+               "Hydroportail",
+               target = "_blank"),
+        HTML(site_metadata_text)
+      )
+    }
+    
   })
   
   #An observer is like a reactive expression in that it can read reactive values and call reactive expressions, 
@@ -518,7 +545,7 @@ ui <- function(request){
   fluidPage(
     #titlePanel("Time series cleaning app"),
     fluidRow(
-      column(1, 
+      column(2, 
              #bookmarkButton(),
              fileInput("file", label = h5("Data table"),
                        accept = c(
@@ -558,10 +585,10 @@ ui <- function(request){
                          choices = "flags",
                          selected = 1),
              
-             uiOutput("download_link") 
+             uiOutput("hydroportail_ui") 
              
       ),
-      column(5,
+      column(4,
              plotOutput('mainplot',
                         height='600px',
                         brush = brushOpts(id = "mainplot_brush", 
