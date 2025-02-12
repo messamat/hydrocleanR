@@ -148,7 +148,7 @@ server <- function(input, output, session) {
 
     if (input$checkbox_scale == 2) {
       pc <- pc +
-        geom_line(alpha=1/2) +
+        geom_line(alpha=1/2, color='#3A76C0') +
         geom_point(data=color_dat, aes(color = !!rlang::sym(colorvar))) +
         scale_y_sqrt()
 
@@ -157,7 +157,7 @@ server <- function(input, output, session) {
       pc <- pc +
         # geom_line(aes(y =!!rlang::sym(input$yvar) + scalar),
         #           alpha=1/2) +
-        geom_line(aes(y = flow + scalar), alpha=1/2) +
+        geom_line(aes(y = flow + scalar), alpha=1/2, color='#3A76C0') +
         geom_point(data=color_dat,
                    aes(colour = !!rlang::sym(colorvar),
                        y = flow + scalar)) +
@@ -187,69 +187,7 @@ server <- function(input, output, session) {
   # Create a reactive Value to store the brush x-range.
   savedBrush <- reactiveVal(NULL)
   
-  # When the "Last 6 months" button is clicked
-  observeEvent(input$last_6months, {
-    req(savedBrush())  # Make sure there's a stored brush range
-    brush_dat <- savedBrush()
-    
-    # Shift by 6 months
-    brush_dat$xmin <- brush_dat$xmin - 183
-    brush_dat$xmax <- brush_dat$xmax - 183
-    
-    # Save the new brush range
-    savedBrush(brush_dat)
-  })
-  
-  # When the "Next 6 months" button is clicked
-  observeEvent(input$next_6months, {
-    req(savedBrush())  # Make sure there's a stored brush range
-    brush_dat <- savedBrush()
-    
-    # Shift by 1 month (30 days)
-    brush_dat$xmin <- brush_dat$xmin + 183
-    brush_dat$xmax <- brush_dat$xmax + 183
-    
-    # Save the new brush range
-    savedBrush(brush_dat)
-  })
-  
-  # When the "Last 6 months" button is clicked
-  observeEvent(input$last_month, {
-    req(savedBrush())  # Make sure there's a stored brush range
-    brush_dat <- savedBrush()
-    
-    # Shift by 1 month (30 days)
-    brush_dat$xmin <- brush_dat$xmin - 30
-    brush_dat$xmax <- brush_dat$xmax - 30
-    
-    # Save the new brush range
-    savedBrush(brush_dat)
-  })
-  
-  # When the "Next 6 months" button is clicked
-  observeEvent(input$next_month, {
-    req(savedBrush())  # Make sure there's a stored brush range
-    brush_dat <- savedBrush()
-    
-    # Shift by 1 month (30 days)
-    brush_dat$xmin <- brush_dat$xmin + 30
-    brush_dat$xmax <- brush_dat$xmax + 30
-    
-    # Save the new brush range
-    savedBrush(brush_dat)
-  })
-  
-  # Whenever the main plot brush updates, store its x-range.
-  observe({
-    req(input$mainplot_brush)
-    # Save the brush's x-range as a list.
-    savedBrush(list(
-      xmin = input$mainplot_brush$xmin,
-      xmax = input$mainplot_brush$xmax
-    ))
-  })
-  
-  # Modify zoomedplot to use the stored plot object
+  # Modify zoomedplot to use the stored plot object ----------------------------
   output$zoomedplot <- renderPlot({
     # Use the saved brush range.
     brush_dat <- savedBrush()
@@ -262,14 +200,77 @@ server <- function(input, output, session) {
     #}
     
     main_plot() +
+      #geom_point(color = 'black', shape=1, alpha=1/4) +
       coord_cartesian(
         xlim=c(brush_dat$xmin, brush_dat$xmax),
         expand=FALSE,
-        clip='off') +
+        clip='on') +
       theme(legend.position = 'none')
   })
   
-  #Grab and transform zoomed plot selection
+  # When the "Last 6 months" button is clicked ---------------------------------
+  observeEvent(input$last_6months, {
+    req(savedBrush())  # Make sure there's a stored brush range
+    brush_dat <- savedBrush()
+    
+    # Shift by 6 months
+    brush_dat$xmin <- brush_dat$xmin - 183
+    brush_dat$xmax <- brush_dat$xmax - 183
+    
+    # Save the new brush range
+    savedBrush(brush_dat)
+  })
+  
+  # When the "Next 6 months" button is clicked ---------------------------------
+  observeEvent(input$next_6months, {
+    req(savedBrush())  # Make sure there's a stored brush range
+    brush_dat <- savedBrush()
+    
+    # Shift by 1 month (30 days)
+    brush_dat$xmin <- brush_dat$xmin + 183
+    brush_dat$xmax <- brush_dat$xmax + 183
+    
+    # Save the new brush range
+    savedBrush(brush_dat)
+  })
+  
+  # When the "Last month" button is clicked ---------------------------------
+  observeEvent(input$last_month, {
+    req(savedBrush())  # Make sure there's a stored brush range
+    brush_dat <- savedBrush()
+    
+    # Shift by 1 month (30 days)
+    brush_dat$xmin <- brush_dat$xmin - 30
+    brush_dat$xmax <- brush_dat$xmax - 30
+    
+    # Save the new brush range
+    savedBrush(brush_dat)
+  })
+  
+  # When the "Next month" button is clicked ---------------------------------
+  observeEvent(input$next_month, {
+    req(savedBrush())  # Make sure there's a stored brush range
+    brush_dat <- savedBrush()
+    
+    # Shift by 1 month (30 days)
+    brush_dat$xmin <- brush_dat$xmin + 30
+    brush_dat$xmax <- brush_dat$xmax + 30
+    
+    # Save the new brush range
+    savedBrush(brush_dat)
+  })
+  
+  #Save brush history -----------------------------------------------------------
+  observe({
+    req(input$mainplot_brush)
+    # Save the brush's x-range as a list.
+    savedBrush(list(
+      xmin = input$mainplot_brush$xmin,
+      xmax = input$mainplot_brush$xmax
+    ))
+  })
+  
+  #Grab and transform y-values of zoomed plot selection ------------------------
   zoomedplots_brush_trans <- reactive({
     req(input$zoomedplot_brush)
     zoomed_sel <- input$zoomedplot_brush
@@ -285,7 +286,7 @@ server <- function(input, output, session) {
     zoomed_sel
   })
 
-  #Display table of zoomed plot selection data
+  #Display table of zoomed plot selection data----------------------------------
   output$brushrange <-  DT::renderDataTable(
     expr = {
       req(zoomedplots_brush_trans)
@@ -299,7 +300,20 @@ server <- function(input, output, session) {
     }, 
     options = list(iDisplayLength = 50))
   
-  #Display a tooltip of X-Y data on hover in the zoomed plot
+  #Allow zooming to zoomed plot selection data----------------------------------
+  observeEvent(input$zoomplot_to_selection, {
+    req(input$zoomedplot_brush)
+    brush_dat <- savedBrush()
+    
+    # Shift by 1 month (30 days)
+    brush_dat$xmin <- input$zoomedplot_brush$xmin
+    brush_dat$xmax <- input$zoomedplot_brush$xmax
+    
+    # Save the new brush range
+    savedBrush(brush_dat)
+  })
+  
+  #Display a tooltip of X-Y data on hover in the zoomed plot--------------------
   #https://gitlab.com/-/snippets/16220
   output$hover_info <- renderUI({
     req(input$plot_hover)
@@ -335,6 +349,7 @@ server <- function(input, output, session) {
     )
   })
   
+  #Delete points ---------------------------------------------------------------
   observeEvent(input$del, {
     req(zoomedplots_brush_trans)
     # Get the brush selection and mark the selected points as deleted
@@ -347,6 +362,7 @@ server <- function(input, output, session) {
     # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
   })
 
+  #Download data  --------------------------------------------------------------
   output$save <- downloadHandler(
     filename <- reactive({ 
       paste(file_path_sans_ext(input$file$name), '_edit.csv', sep = '') 
@@ -431,13 +447,16 @@ ui <- function(request){
              fluidRow(
                column(2, actionButton('last_6months', "Last 6 months")),
                column(2, actionButton('next_6months', "Next 6 months")),
+               column(2, actionButton('zoomplot_to_selection', 'Zoom to selection')),
+               column(2, actionButton('last_month', "Last month")),
+               column(2, actionButton('next_month', "Next month")),
+             ),
+             fluidRow(
                column(2, actionButton('del', "Delete", 
                                       style="color: #fff; background-color: #dd7055; border-color: darkred")),
                column(2, downloadButton('save', 'Save', 
-                                        style="color: #fff; background-color: #337ab7; border-color: #2e6da4")),
-               column(2, actionButton('last_month', "Last month")),
-               column(2, actionButton('next_month', "Next month")),
-             )
+                                        style="color: #fff; background-color: #337ab7; border-color: #2e6da4"))
+             ),
       )
     )
     ,
