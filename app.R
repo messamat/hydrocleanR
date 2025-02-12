@@ -96,9 +96,8 @@ server <- function(input, output, session) {
   })
   
   #Create data
-  observe({
+  observeEvent(myData(), {
     #req(input$xvar)
-    
     if (is.null(dt$data)) {
       dt$data <- myData()
     }
@@ -187,6 +186,7 @@ server <- function(input, output, session) {
   })
   
   output$mainplot <- renderPlot({
+    req(dt$data)
     main_plot()
   })
   
@@ -195,6 +195,7 @@ server <- function(input, output, session) {
   
   # Modify zoomedplot to use the stored plot object ----------------------------
   output$zoomedplot <- renderPlot({
+    req(savedBrush(), dt$data)
     # Use the saved brush range.
     brush_dat <- savedBrush()
     req(brush_dat)  # Make sure it exists.
@@ -403,6 +404,7 @@ server <- function(input, output, session) {
     # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
   })
   
+  deleted_rows_list <- reactiveVal(list())
   
   #Delete points ---------------------------------------------------------------
   observeEvent(input$del, {
@@ -412,9 +414,13 @@ server <- function(input, output, session) {
                                    zoomedplots_brush_trans(),
                                    allRows = TRUE)
     
-    # Set yvar to NA for the rows that will be deleted (selected_ == TRUE)
-    dt$data[selected_data$selected_ == TRUE, 'flow'] <- NA
-    # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
+    if (any(selected_data$selected_)) {
+      deleted_rows_list(c(deleted_rows_list(), list(selected_data)))
+      
+      # Set yvar to NA for the rows that will be deleted (selected_ == TRUE)
+      dt$data[selected_data$selected_ == TRUE, 'flow'] <- NA
+      # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
+    }
   })
   
   #Delete flagged points ---------------------------------------------------------------
@@ -435,6 +441,28 @@ server <- function(input, output, session) {
     # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
   })
 
+  #Undo delete ---------------------------------------------------------------
+  observeEvent(input$restore_data, {
+    req(dt$data, zoomedplots_brush_trans(), length(deleted_rows_list()) > 0)
+    # Get the brush selection and mark the selected points as deleted
+    selected_restorable <- brushedPoints(rbindlist(deleted_rows_list(), 
+                                                   fill = TRUE), 
+                                         zoomedplots_brush_trans())
+    
+    if (nrow(selected_restorable) > 0) {
+      #dt$data <- rbind(dt$data, selected_restorable, fill = TRUE)
+      dt$data[date %in% selected_restorable$date, 'flow'] <-
+        dt$data[date %in% selected_restorable$date, 'flow_backup']
+      
+      # Remove the restored rows from the deleted list
+      updated_deleted_list <- lapply(deleted_rows_list(), function(df) {
+        df[!date %in% selected_restorable$date]
+      })
+      updated_deleted_list <- updated_deleted_list[lengths(updated_deleted_list) > 0]  # Remove empty elements
+      deleted_rows_list(updated_deleted_list)
+    }
+  })
+  
   #Download data  --------------------------------------------------------------
   output$save <- downloadHandler(
     filename <- reactive({ 
@@ -532,8 +560,10 @@ ui <- function(request){
                             style="color: #fff; background-color: #dd7055; border-color: darkred"),
                actionButton('flag_suspect', "Flag as suspect", 
                             style="color: #fff; background-color: #dd7055; border-color: darkred"),
+               actionButton('restore_data', "Restore deleted data", 
+                            style="color: #fff; background-color: #337ab7; border-color: #2e6da4"),
                downloadButton('save', 'Save', 
-                                        style="color: #fff; background-color: #337ab7; border-color: #2e6da4")
+                              style="color: #fff; background-color: #337ab7; border-color: #2e6da4")
              ),
       )
     )
