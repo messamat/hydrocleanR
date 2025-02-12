@@ -402,6 +402,24 @@ server <- function(input, output, session) {
     dt$data[selected_data$selected_ == TRUE, 'flow'] <- NA
     # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
   })
+  
+  #Delete flagged points ---------------------------------------------------------------
+  observeEvent(input$del_flagged, {
+    req(zoomedplots_brush_trans)
+    # Get the brush selection and mark the selected points as deleted
+    selected_data <- brushedPoints(dt$data, 
+                                   zoomedplots_brush_trans(),
+                                   allRows = TRUE)
+    
+    flag_cols <- grep('tag_([2-9]|10)', names(dt$data), value=T)
+    
+    # Set yvar to NA for the rows that will be deleted (selected_ == TRUE)
+    dt$data[(selected_data$selected_ == TRUE) &
+              dt$data[, rowSums(!sapply(.SD, is.na))>0, 
+                      .SDcols = flag_cols], 
+            'flow'] <- NA
+    # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
+  })
 
   #Download data  --------------------------------------------------------------
   output$save <- downloadHandler(
@@ -496,6 +514,8 @@ ui <- function(request){
              fluidRow(
                actionButton('del', "Delete", 
                                       style="color: #fff; background-color: #dd7055; border-color: darkred"),
+               actionButton('del_flagged', "Delete flagged points", 
+                            style="color: #fff; background-color: #dd7055; border-color: darkred"),
                downloadButton('save', 'Save', 
                                         style="color: #fff; background-color: #337ab7; border-color: #2e6da4")
              ),
