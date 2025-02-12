@@ -40,13 +40,13 @@ server <- function(input, output, session) {
     
     # Create a clickable link using tags$a()
     site_url <- sprintf('https://hydro.eaufrance.fr/sitehydro/%s/fiche', 
-                      regmatches(input$file$name, 
-                                 regexec('(?<=site_)[A-Z0-9]+', 
-                                         input$file$name, 
-                                         perl=T)
-                      )
+                        regmatches(input$file$name, 
+                                   regexec('(?<=site_)[A-Z0-9]+', 
+                                           input$file$name, 
+                                           perl=T)
+                        )
     )
-
+    
     tags$a(href = site_url,
            "Hydroportail",
            target = "_blank")
@@ -73,7 +73,7 @@ server <- function(input, output, session) {
     
     # input$xvar <- 'date'
     # input$yvar <- 'flow'
-
+    
     #Create selection of variables based on input table
     # updateSelectInput(
     #   session,
@@ -81,7 +81,7 @@ server <- function(input, output, session) {
     #   choices= colnames(myData()),
     #   selected = 'date'  #colnames(myData())[[min(c(ncol(myData()), 2))]]
     # )
-
+    
     # updateSelectInput(
     #   session,
     #   inputId = "yvar",
@@ -150,13 +150,13 @@ server <- function(input, output, session) {
       color_dat <- dt$data
       colorvar <- input$colorvar
     }
-
+    
     if (input$checkbox_scale == 2) {
       pc <- pc +
         geom_line(alpha=1/2, color='#3A76C0') +
         geom_point(data=color_dat, aes(color = !!rlang::sym(colorvar))) +
         scale_y_sqrt()
-
+      
     } else if (input$checkbox_scale == 3) {
       scalar <- 0.01
       pc <- pc +
@@ -166,7 +166,7 @@ server <- function(input, output, session) {
         geom_point(data=color_dat,
                    aes(colour = !!rlang::sym(colorvar),
                        y = flow + scalar)) +
-                       # y =!!rlang::sym(input$yvar) + scalar)) +
+        # y =!!rlang::sym(input$yvar) + scalar)) +
         scale_y_log10(breaks=c(0.01, 0.02, 0.1, 1, 10, 100, 1000, 10000, 100000),
                       labels=c(0, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000),
                       expand=c(0,0))
@@ -175,7 +175,7 @@ server <- function(input, output, session) {
         geom_point(data=color_dat,
                    aes_string(color = colorvar))
     }
-
+    
     if (is.character(input$colorvar)) {
       if (class(dt$data[[eval(input$colorvar)]]) %in% c('integer', 'numeric')) {
         pc <- pc + scale_color_distiller(palette='Spectral')
@@ -308,7 +308,7 @@ server <- function(input, output, session) {
     }
     zoomed_sel
   })
-
+  
   #Display table of zoomed plot selection data----------------------------------
   output$brushrange <-  DT::renderDataTable(
     expr = {
@@ -433,15 +433,24 @@ server <- function(input, output, session) {
     
     flag_cols <- grep('tag_([2-9]|10)', names(dt$data), value=T)
     
-    # Set yvar to NA for the rows that will be deleted (selected_ == TRUE)
-    dt$data[(selected_data$selected_ == TRUE) &
-              dt$data[, rowSums(!sapply(.SD, is.na))>0, 
-                      .SDcols = flag_cols], 
-            'flow'] <- NA
-    # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
+    if (any(selected_data$selected_)) {
+      deleted_rows_list(c(deleted_rows_list(), 
+                          list(dt$data[(selected_data$selected_ == TRUE) &
+                                         dt$data[, rowSums(!sapply(.SD, is.na))>0, 
+                                                 .SDcols = flag_cols],] )))
+      
+      # Set yvar to NA for the rows that will be deleted (selected_ == TRUE)
+      dt$data[(selected_data$selected_ == TRUE) &
+                dt$data[, rowSums(!sapply(.SD, is.na))>0, 
+                        .SDcols = flag_cols], 
+              'flow'] <- NA
+      
+      # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
+    }
+    
   })
-
-  #Undo delete ---------------------------------------------------------------
+  
+  #Restore data ---------------------------------------------------------------
   observeEvent(input$restore_data, {
     req(dt$data, zoomedplots_brush_trans(), length(deleted_rows_list()) > 0)
     # Get the brush selection and mark the selected points as deleted
@@ -555,7 +564,7 @@ ui <- function(request){
              ),
              fluidRow(
                actionButton('del', "Delete", 
-                                      style="color: #fff; background-color: #dd7055; border-color: darkred"),
+                            style="color: #fff; background-color: #dd7055; border-color: darkred"),
                actionButton('del_flagged', "Delete flagged points", 
                             style="color: #fff; background-color: #dd7055; border-color: darkred"),
                actionButton('flag_suspect', "Flag as suspect", 
