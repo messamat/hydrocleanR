@@ -61,7 +61,7 @@ server <- function(input, output, session) {
                                          'en étiage seulement', 'forte',
                                          'hautes eaux seulement'))
       site_metadata_text <- paste(
-        'Site:', site_metadata$code_site, "<br/>",
+        '<br/> Site:', site_metadata$code_site, "<br/>",
         site_metadata$libelle_site, "<br/>",
         'Surface BV:', site_metadata$surface_bv, "km<sup>2</sup> <br/>",
         'Influence: ', influence_ref[
