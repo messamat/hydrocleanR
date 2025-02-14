@@ -150,7 +150,7 @@ server <- function(input, output, session) {
                        id.vars=grep('tag_([2-9]|10)|(visual_flag)', names(dt$data),
                                     value=T, invert=T)
       ) %>%
-        .[!is.na(value),]
+        .[!is.na(value) & value != '',]
     }
   })
   
