@@ -4,6 +4,7 @@ library(shinyBS)
 library(DT)
 library(data.table)
 library(fst)
+library(gginnards)
 library(ggplot2)
 library(hubeau)
 library(qs)
@@ -159,8 +160,10 @@ server <- function(input, output, session) {
     dt$flags <- dt$flags[date %in% dt$data[['date']],]
   })
   
-  #Produce main plot
-  main_plot <- reactive({
+  #Produce main plot -----------------------------------------------------------
+  main_plot <- reactiveVal(NULL)
+  
+  observe({
     req(dt$data)
     
     pc <- ggplot(dt$data, aes(x = date, y = flow, group=1)) +
@@ -214,13 +217,16 @@ server <- function(input, output, session) {
         pc <- pc + scale_color_discrete(name = 'Daily flags')
       }
     }
-    pc + 
+    pc <- pc + 
       theme_bw() +
       theme(text = element_text(size = 16))
+
+    main_plot(pc)
   })
   
+  # Create a static version of the main plot (without reactivity)---------------
   output$mainplot <- renderPlot({
-    req(dt$data)
+    req(main_plot())
     main_plot()
   })
   
@@ -248,14 +254,15 @@ server <- function(input, output, session) {
       colorvar <- input$colorvar
     }
     
-    main_plot() +
+    delete_layers(main_plot(), "GeomVline") +
       geom_point(data=dt$data[!(date %in% color_dat$date),],
                  color = 'black', alpha=1/10) +
       coord_cartesian(
         xlim=c(brush_dat$xmin, brush_dat$xmax),
         clip='on',
         expand = FALSE) +
-      theme(legend.position = 'none')
+      theme(legend.position = 'none',
+            axis.title = element_blank())
   })
   
   # When the "Last 6 months" button is clicked ---------------------------------
@@ -429,6 +436,26 @@ server <- function(input, output, session) {
     )
   })
   
+  #See progress on main plot ---------------------------------------------------
+  observeEvent(input$see_progress, {
+    req(main_plot(), savedBrush())
+    
+    brush_dat <- savedBrush()
+    
+    if (!is.null(brush_dat)) {
+      brush_dat$xmin <- as.Date(brush_dat$xmin, origin="1970-01-01")
+      brush_dat$xmax <- as.Date(brush_dat$xmax, origin="1970-01-01")
+      
+      # Retrieve and modify the existing plot
+      main_plot_toupdate <- main_plot()
+      
+      main_plot_toupdate <- delete_layers(main_plot_toupdate, "GeomVline")
+      main_plot(main_plot_toupdate + 
+                  geom_vline(xintercept = c(brush_dat$xmin, brush_dat$xmax), 
+                             color = "black", linetype = "dashed"))
+    }
+  })
+  
   #Flag as suspect -------------------------------------------------------------
   observeEvent(input$flag_suspect, {
     req(zoomedplots_brush_trans)
@@ -518,8 +545,11 @@ server <- function(input, output, session) {
 ############################## UI ##############################################
 ui <- function(request){
   fluidPage(
+    tags$style(type="text/css",
+               ".recalculating {opacity: 1.0;}"
+    ),
     fluidRow(
-      column(2, 
+      column(2,
              fileInput("file", label = h5("Data table"),
                        accept = c(
                          "text/csv",
@@ -543,15 +573,16 @@ ui <- function(request){
              uiOutput("hydroportail_ui") 
              
       ),
-      column(4,
+      column(4, style='padding:0px;',
              plotOutput('mainplot',
                         height='600px',
                         brush = brushOpts(id = "mainplot_brush", 
                                           clip = TRUE, 
                                           resetOnNew = TRUE,
-                                          direction = "x"))
+                                          direction = "x")),
+             actionButton('see_progress', "See zoomed range on main plot"),
       ),
-      column(6,
+      column(6, style='padding:0px;',
              plotOutput('zoomedplot',
                         height='600px',
                         brush = brushOpts(id = "zoomedplot_brush",
