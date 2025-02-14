@@ -8,15 +8,14 @@ library(ggplot2)
 library(hubeau)
 library(qs)
 #library(reactlog) #for debugging: https://shiny.posit.co/r/getstarted/build-an-app/reactivity-essentials/using-reactives.html
-library(tools)
 
-#source("helpers.R")
 options(shiny.maxRequestSize=2000*1024^2)
 
 ############################## SERVER ##########################################
 server <- function(input, output, session) {
   dt <- reactiveValues(data = NULL,
-                       flags = NULL)
+                       flags = NULL,
+                       rect_dt = NULL)
   
   zoom_history <- reactiveVal(list())
   
@@ -50,7 +49,7 @@ server <- function(input, output, session) {
     site_url <- sprintf('https://hydro.eaufrance.fr/sitehydro/%s/fiche', 
                         code_site)
     
-
+    
     
     #Get info from hubeau
     site_metadata <- hubeau::get_hydrometrie_sites(code_site = code_site)
@@ -138,6 +137,38 @@ server <- function(input, output, session) {
     if ('date' %in% colnames(dt$data)) { #(input$checkbox_date & 
       dt$data[, date := as.Date(date)]
     }
+    
+    #Background rectangle for included or excluded years
+    if ('tag_1' %in% colnames(dt$data)) {
+      rect_dt_missing <- dt$data[, list(
+        flag = tag_1[[1]],
+        xmin=min(date),
+        xmax=max(date)
+      ), by=rleid(tag_1)] %>%
+        .[flag == FALSE,] %>%
+        .[, `:=`(
+          flag = NULL,
+          ymin = min(dt$data$flow, na.rm=T),
+          ymax = max(dt$data$flow, na.rm=T))] %>%
+        .[, flag := 'Insufficient data']
+      
+      dt$rect_dt <- rbind(dt$rect_dt, rect_dt_missing, fill=T)
+    }
+    
+    #Background rectangle for suspect years
+    if ('annual_quality_code' %in% colnames(dt$data)) {
+      rect_dt_suspect <- dt$data[, list(
+        flag = annual_quality_code[[1]],
+        xmin=min(date),
+        xmax=max(date)
+      ), by=rleid(annual_quality_code)] %>%
+        .[flag == 'douteuse',] %>%
+        .[, `:=`(ymin = min(dt$data$flow, na.rm=T),
+                 ymax = max(dt$data$flow, na.rm=T),
+                 flag = 'Labeled as suspect')]
+      dt$rect_dt <- rbind(dt$rect_dt, rect_dt_suspect, fill=T)
+    }
+    
   })
   
   #Create flags
@@ -162,26 +193,18 @@ server <- function(input, output, session) {
   main_plot <- reactive({
     req(dt$data)
     
-    #Background rectangle for included or excluded years
-    if ('tag_1' %in% colnames(dt$data)) {
-      rect_df <- dt$data[, list(tag_1 = tag_1[[1]],
-                                xmin=min(date),
-                                xmax=max(date)
-      ), by=rleid(tag_1)] %>%
-        .[tag_1 == FALSE,] %>%
-        .[, `:=`(ymin = min(dt$data$flow, na.rm=T),
-                 ymax = max(dt$data$flow, na.rm=T))]
-    }
-
     # pc <- ggplot(dt$data, 
     #              aes_string(x = input$xvar,
     #                         y = (input$yvar),
     #                         group=1)) 
     pc <- ggplot(dt$data, aes(x = date, y = flow, group=1)) +
-      geom_rect(data=rect_df, 
-                aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
-                fill='red', alpha=1/7, inherit.aes = FALSE)
-      
+      geom_rect(data = dt$rect_dt, 
+                aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, fill=flag),
+                alpha=1/7, inherit.aes = FALSE, 
+                show.legend = TRUE) +
+      scale_fill_manual(name = 'Calendar year flags', 
+                        values=c('red', 'darkgrey'))
+    
     
     if (input$colorvar == 'flags') {
       color_dat <- dt$flags
@@ -224,9 +247,12 @@ server <- function(input, output, session) {
     if (is.character(input$colorvar)) {
       if (class(dt$data[[eval(input$colorvar)]]) %in% c('integer', 'numeric')) {
         pc <- pc + scale_color_distiller(palette='Spectral')
+      } else {
+        pc <- pc + scale_color_discrete(name = 'Daily flags')
       }
     }
-    pc + theme_bw() +
+    pc + 
+      theme_bw() +
       theme(text = element_text(size = 16))
   })
   
@@ -260,7 +286,7 @@ server <- function(input, output, session) {
       color_dat <- dt$data
       colorvar <- input$colorvar
     }
-
+    
     main_plot() +
       geom_point(data=dt$data[!(date %in% color_dat$date),],
                  color = 'black', alpha=1/10) +
@@ -531,7 +557,7 @@ server <- function(input, output, session) {
   #Download data  --------------------------------------------------------------
   output$save <- downloadHandler(
     filename <- reactive({ 
-      paste(file_path_sans_ext(input$file$name), '_edit.csv', sep = '') 
+      paste(tools::file_path_sans_ext(input$file$name), '_edit.csv', sep = '') 
     }),
     content = function(file) {
       fwrite(dt$data, file, row.names = F)
