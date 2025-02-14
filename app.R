@@ -39,17 +39,16 @@ server <- function(input, output, session) {
     req(input$file)  # Ensure the path is selected before generating the link
     
     
-    code_site <- regmatches(input$file$name, 
-                            regexec('(?<=site_)[A-Z0-9]+', 
-                                    input$file$name, 
-                                    perl=T)
+    code_site <- regmatches(
+      input$file$name, 
+      regexec('(?<=site_)[A-Z0-9]+', 
+              input$file$name, 
+              perl=T)
     )[[1]]
     
     # Create a clickable link using tags$a()
     site_url <- sprintf('https://hydro.eaufrance.fr/sitehydro/%s/fiche', 
                         code_site)
-    
-    
     
     #Get info from hubeau
     site_metadata <- hubeau::get_hydrometrie_sites(code_site = code_site)
@@ -90,31 +89,6 @@ server <- function(input, output, session) {
     
     #   The input updater functions send a message to the client, telling it to change the settings of an input object. 
     #   The messages are collected and sent after all the observers (including outputs) have finished running.
-    # updateSelectInput(
-    #   session,
-    #   inputId = "groupvar",
-    #   choices = colnames(myData()),
-    #   selected = colnames(myData())[[1]]
-    # )
-    
-    # input$xvar <- 'date'
-    # input$yvar <- 'flow'
-    
-    #Create selection of variables based on input table
-    # updateSelectInput(
-    #   session,
-    #   inputId = "xvar",
-    #   choices= colnames(myData()),
-    #   selected = 'date'  #colnames(myData())[[min(c(ncol(myData()), 2))]]
-    # )
-    
-    # updateSelectInput(
-    #   session,
-    #   inputId = "yvar",
-    #   choices= colnames(myData()),
-    #   selected = 'flow' #colnames(myData())[[min(c(ncol(myData()), 4))]]
-    # )
-    
     updateSelectInput(
       session,
       inputId = "colorvar",
@@ -127,9 +101,6 @@ server <- function(input, output, session) {
     if (is.null(dt$data)) {
       dt$data <- myData()
     }
-    # if (input$checkbox_date & (input$xvar %in% colnames(dt$data))) {
-    #   dt$data[, (input$xvar) := as.Date(get(input$xvar))]
-    # }
     if ('flow' %in% colnames(dt$data)) {
       dt$data[, flow_backup := flow]
     }
@@ -185,7 +156,6 @@ server <- function(input, output, session) {
   #Pass date object to UI
   flag_dat <- reactive({
     req(dt$flags, dt$data) #input$xvar, 
-    # dt$flags <- dt$flags[eval(input$xvar) %in% dt$data[[input$xvar]],]
     dt$flags <- dt$flags[date %in% dt$data[['date']],]
   })
   
@@ -193,10 +163,6 @@ server <- function(input, output, session) {
   main_plot <- reactive({
     req(dt$data)
     
-    # pc <- ggplot(dt$data, 
-    #              aes_string(x = input$xvar,
-    #                         y = (input$yvar),
-    #                         group=1)) 
     pc <- ggplot(dt$data, aes(x = date, y = flow, group=1)) +
       geom_rect(data = dt$rect_dt, 
                 aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, fill=flag),
@@ -227,14 +193,11 @@ server <- function(input, output, session) {
     } else if (input$checkbox_scale == 3) {
       scalar <- 0.01
       pc <- pc +
-        # geom_line(aes(y =!!rlang::sym(input$yvar) + scalar),
-        #           alpha=1/2) +
         geom_line(aes(y = flow + scalar, color=tag_1), alpha=1/2, color='#3A76C0') +
         geom_point(data=color_dat,
                    aes(colour = !!rlang::sym(colorvar),
                        y = flow + scalar),
                    size=2) +
-        # y =!!rlang::sym(input$yvar) + scalar)) +
         scale_y_log10(breaks=c(0.01, 0.02, 0.1, 1, 10, 100, 1000, 10000, 100000),
                       labels=c(0, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000),
                       expand=c(0,0))
@@ -271,8 +234,6 @@ server <- function(input, output, session) {
     brush_dat <- savedBrush()
     req(brush_dat)  # Make sure it exists.
     
-    # If the checkbox for date conversion is on, convert the saved values.
-    #if (input$checkbox_date) {
     brush_dat$xmin <- as.Date(brush_dat$xmin, origin="1970-01-01")
     brush_dat$xmax <- as.Date(brush_dat$xmax, origin="1970-01-01")
     
@@ -442,7 +403,6 @@ server <- function(input, output, session) {
   output$hover_info <- renderUI({
     req(input$plot_hover)
     hover_dat <- isolate(input$plot_hover)
-    # hover_dat$mapping$y <- input$yvar
     hover_dat$mapping$y <- 'flow'
     nearpoint <- nearPoints(dt$data, hover_dat, threshold = 10, maxpoints = 1)
     if (nrow(nearpoint) == 0) return(NULL)
@@ -462,10 +422,6 @@ server <- function(input, output, session) {
     # actual tooltip created as wellPanel
     wellPanel(
       style = style_hover,
-      # p(HTML(paste0("<b>", input$xvar, ": </b>", 
-      #               nearpoint[[input$xvar]], "<br/>",
-      #               "<b>", input$yvar, ": </b>", 
-      #               nearpoint[[input$yvar]], "<br/>")))
       p(HTML(paste0("<b>Date: </b>", 
                     nearpoint$date, "<br/>",
                     "<b>Flow: </b>", 
@@ -480,10 +436,7 @@ server <- function(input, output, session) {
     selected_data <- brushedPoints(dt$data, 
                                    zoomedplots_brush_trans(),
                                    allRows = TRUE)
-    
-    # Set yvar to NA for the rows that will be deleted (selected_ == TRUE)
     dt$data[selected_data$selected_ == TRUE, 'visual_flag'] <- 'Visually suspect'
-    # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
   })
   
   deleted_rows_list <- reactiveVal(list())
@@ -501,7 +454,6 @@ server <- function(input, output, session) {
       
       # Set yvar to NA for the rows that will be deleted (selected_ == TRUE)
       dt$data[selected_data$selected_ == TRUE, 'flow'] <- NA
-      # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
     }
   })
   
@@ -526,8 +478,6 @@ server <- function(input, output, session) {
                 dt$data[, rowSums(!sapply(.SD, is.na))>0, 
                         .SDcols = flag_cols], 
               'flow'] <- NA
-      
-      # dt$data[selected_data$selected_ == TRUE, input$yvar] <- NA
     }
     
   })
@@ -541,7 +491,6 @@ server <- function(input, output, session) {
                                          zoomedplots_brush_trans())
     
     if (nrow(selected_restorable) > 0) {
-      #dt$data <- rbind(dt$data, selected_restorable, fill = TRUE)
       dt$data[date %in% selected_restorable$date, 'flow'] <-
         dt$data[date %in% selected_restorable$date, 'flow_backup']
       
@@ -569,10 +518,8 @@ server <- function(input, output, session) {
 ############################## UI ##############################################
 ui <- function(request){
   fluidPage(
-    #titlePanel("Time series cleaning app"),
     fluidRow(
       column(2, 
-             #bookmarkButton(),
              fileInput("file", label = h5("Data table"),
                        accept = c(
                          "text/csv",
@@ -581,30 +528,12 @@ ui <- function(request){
                          ".qs",
                          '.fst')
              ),
-             # selectInput("groupvar", 
-             #             label = h5("Group variable"),
-             #             ""),
-             # selectizeInput("xvar",
-             #                label = h5("X variable"),
-             #                choices = "",
-             #                options = list(closeAfterSelect=TRUE)
-             #                ),
-             # checkboxInput("checkbox_date",
-             #               label = "Convert X variable to dates?", 
-             #               value = T),
-             # print("Warning: once checked, unchecking will cancel
-             #       temporary changes to data"),
-             
-             # selectInput("yvar",
-             #             label = h5("Y variable"),
-             #             ""),
              radioButtons("checkbox_scale",
                           label = "Scale Y variable?", 
                           choices = list("No scaling" = 1,
                                          "Square root" = 2,
                                          "Log" = 3),
                           selected = 1),
-             #print("Warning: once chosen, changing will cancel temporary changes to data"),
              
              selectInput("colorvar",
                          label = h5("Color-coding variable"),
