@@ -162,10 +162,11 @@ server <- function(input, output, session) {
   
   #Produce main plot -----------------------------------------------------------
   main_plot <- reactiveVal(NULL)
+  in_linewidth <- 0.7
   
   observe({
     req(dt$data)
-    
+
     pc <- ggplot(dt$data, aes(x = date, y = flow, group=1)) +
       geom_rect(data = dt$rect_dt, 
                 aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, fill=flag),
@@ -188,7 +189,7 @@ server <- function(input, output, session) {
     
     if (input$checkbox_scale == 2) {
       pc <- pc +
-        geom_line(alpha=1/2, color='#3A76C0') +
+        geom_line(alpha=1/2, linewidth = in_linewidth, color='#0a3d7d') +
         geom_point(data=color_dat, aes(color = !!rlang::sym(colorvar)),
                    size=2) +
         scale_y_sqrt()
@@ -196,7 +197,8 @@ server <- function(input, output, session) {
     } else if (input$checkbox_scale == 3) {
       scalar <- 0.01
       pc <- pc +
-        geom_line(aes(y = flow + scalar, color=tag_1), alpha=1/2, color='#3A76C0') +
+        geom_line(aes(y = flow + scalar, color=tag_1), alpha=1/2,
+                  linewidth = in_linewidth, color='#0a3d7d') +
         geom_point(data=color_dat,
                    aes(colour = !!rlang::sym(colorvar),
                        y = flow + scalar),
@@ -205,7 +207,7 @@ server <- function(input, output, session) {
                       labels=c(0, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000),
                       expand=c(0,0))
     } else {
-      pc <- pc + geom_line(alpha=1/2, color='#3A76C0') +
+      pc <- pc + geom_line(alpha=1/2, linewidth = in_linewidth, color='#0a3d7d') +
         geom_point(data=color_dat, aes(color = !!rlang::sym(colorvar)),
                    size=2)
     }
