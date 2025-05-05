@@ -382,6 +382,23 @@
       ],
       "Hash": "15e9634c0fcd294799e9b2e929ed1b86"
     },
+    "gginnards": {
+      "Package": "gginnards",
+      "Version": "0.2.0-1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "ggplot2",
+        "magrittr",
+        "methods",
+        "rlang",
+        "stringr",
+        "tibble",
+        "utils"
+      ],
+      "Hash": "e91b4e22315b5fe48f9acdac06c8b8a1"
+    },
     "ggplot2": {
       "Package": "ggplot2",
       "Version": "3.5.1",
@@ -508,7 +525,7 @@
     },
     "hubeau": {
       "Package": "hubeau",
-      "Version": "0.5.1",
+      "Version": "0.5.2",
       "Source": "Repository",
       "Repository": "CRAN",
       "Requirements": [
@@ -521,7 +538,7 @@
         "urltools",
         "utils"
       ],
-      "Hash": "85fd86e27f29f006235ac759179598c0"
+      "Hash": "212eb2ab7749dc9eb428852d21bb29f3"
     },
     "isoband": {
       "Package": "isoband",
@@ -992,6 +1009,36 @@
         "RcppParallel"
       ],
       "Hash": "b7eb79470319ae71d4b5ed9cd7bf7294"
+    },
+    "stringi": {
+      "Package": "stringi",
+      "Version": "1.8.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "stats",
+        "tools",
+        "utils"
+      ],
+      "Hash": "39e1144fd75428983dc3f63aa53dfa91"
+    },
+    "stringr": {
+      "Package": "stringr",
+      "Version": "1.5.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "cli",
+        "glue",
+        "lifecycle",
+        "magrittr",
+        "rlang",
+        "stringi",
+        "vctrs"
+      ],
+      "Hash": "960e2ae9e09656611e0b8214ad543207"
     },
     "sys": {
       "Package": "sys",
